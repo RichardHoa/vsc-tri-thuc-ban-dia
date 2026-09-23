@@ -52,6 +52,11 @@ class FolkStoryPipeline:
                     logging.warning(f"Story #{self.config.story_number} was not found in page range.")
                     return {}
 
+            for s in stories:
+                for stop in self.config.hard_stops:
+                    if s.start_page < stop <= s.end_page:
+                        s.end_page = stop - 1
+
             logging.info(f"Discovered {len(stories)} stories.")
 
             sections_map: Dict[str, List[Dict[str, any]]] = {}

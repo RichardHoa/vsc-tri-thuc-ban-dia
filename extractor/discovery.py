@@ -16,7 +16,7 @@ class StoryDiscoveryEngine:
     """Discovers Roman numeral category headers and story boundaries across the PDF."""
 
     ROMAN_HEADER_PAT = re.compile(r'^([IVXLCDM]+)\s*[\.\-]?\s*(.+)$')
-    STORY_TITLE_PAT = re.compile(r'^(\d+)\.\s+(.+)$')
+    STORY_TITLE_PAT = re.compile(r'^\[?(\d+)\]?\.\s+(.+)$')
 
     @classmethod
     def clean_category_title(cls, raw_title: str) -> Optional[Tuple[str, str]]:

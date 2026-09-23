@@ -14,7 +14,17 @@ from .footnotes import FootnoteEngine
 from .discovery import StoryDiscoveryEngine
 from .engine import StoryExtractionEngine
 from .formatters import MarkdownRenderer, TableOfContentsBuilder
+from .toc import SectionRange, TableOfContentsParser, TocEntry
 from .pipeline import FolkStoryPipeline
+from .validation import (
+    ExtractionValidator,
+    StoryValidationResult,
+    ValidationReporter,
+    extract_raw_page_text,
+    normalize_for_diff,
+    score_alignment,
+    strip_markdown_scaffolding,
+)
 
 __all__ = [
     "Footnote",
@@ -28,5 +38,15 @@ __all__ = [
     "StoryExtractionEngine",
     "MarkdownRenderer",
     "TableOfContentsBuilder",
+    "TocEntry",
+    "SectionRange",
+    "TableOfContentsParser",
     "FolkStoryPipeline",
+    "StoryValidationResult",
+    "ExtractionValidator",
+    "ValidationReporter",
+    "normalize_for_diff",
+    "strip_markdown_scaffolding",
+    "extract_raw_page_text",
+    "score_alignment",
 ]

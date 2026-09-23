@@ -49,6 +49,8 @@ class ExtractorConfig:
     end_page: int = 200
     output_dir: str = "extracted_stories"
     story_number: Optional[int] = None
+    # Pages where non-story material begins; stories are clamped to end before them
+    hard_stops: List[int] = field(default_factory=list)
     min_header_y: float = 60.0
     max_footer_y: float = 745.0
     footer_fallback_y: float = 680.0
