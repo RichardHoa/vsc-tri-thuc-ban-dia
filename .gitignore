@@ -1,3 +1,14 @@
 /extracted_stories
 .agents
 __pycache__
+I_stories
+.vibecode-backup*/
+
+# RIPER-5 coding kit / harness (local only)
+.claude/
+.codex/
+.vc-installed-files
+.vc-version
+AGENTS.md
+CLAUDE.md
+process/
