@@ -9,7 +9,8 @@ page range, and scores text fidelity with `difflib`.
 Two kinds of signal are produced:
 
 * **Structural checks** — empty title/category/body, orphan footnote markers,
-  orphan footnote entries, low character density, section-level story-count drift.
+  orphan footnote entries, bare ``-`` paragraphs, footnote-chain gaps, low
+  character density, section-level story-count drift.
 * **Text alignment** — `rendered_coverage` (what fraction of the rendered Markdown
   prose is found in the raw PDF page text) is the primary metric and the report's
   sort key / threshold. It is scored **per segment**: the body prose is diffed
@@ -49,7 +50,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import fitz  # PyMuPDF
 
+from .models import ExtractorConfig
 from .normalizer import TextNormalizer
+from .survey import EdgeCaseSurvey, FootnoteChain
 from .toc import SectionRange, TableOfContentsParser
 
 #: Below this many characters per PDF page a story is flagged ``LOW_DENSITY``.
@@ -105,14 +108,26 @@ _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+")
 _HRULE_RE = re.compile(r"^\s*-{3,}\s*$")
 _FOOTNOTE_DEF_RE = re.compile(r"^\[\^(\d+)\]:\s*(?:\(Trang\s*(\d+)\)\s*)?")
 _INLINE_MARKER_RE = re.compile(r"\[\^(\d+)\]")
+#: Blockquote marker of a rendered verse line (``> Cô hố cô hố.``).
+_BLOCKQUOTE_RE = re.compile(r"^\s{0,3}>\s?")
+#: A footnote's continuation block (verse / prose after a verse) is indented.
+_FOOTNOTE_CONT_RE = re.compile(r"^(?: {4}|\t)")
+#: A paragraph that is only a dialogue dash — a dash orphaned from its speech.
+_BARE_DASH_RE = re.compile(r"^[-–—]$")
+
+
+def _unquote(line: str) -> str:
+    """Drop a leading blockquote marker, keeping the verse text."""
+    return _BLOCKQUOTE_RE.sub("", line)
 
 
 def strip_markdown_scaffolding(md: str) -> str:
     """Drop Markdown scaffolding, leaving only prose that should exist in the PDF.
 
     Removes heading lines, the ``---`` rule, the ``### Chú thích`` label, the
-    ``[^N]: (Trang N)`` footnote prefixes and inline ``[^N]`` markers. Footnote
-    *body* text is kept — it is real PDF text.
+    ``[^N]: (Trang N)`` footnote prefixes, the ``> `` verse blockquote markers
+    (and a footnote continuation's indentation) and inline ``[^N]`` markers.
+    Footnote *body* text and verse text are kept — they are real PDF text.
     """
     kept: List[str] = []
     for line in md.splitlines():
@@ -121,6 +136,7 @@ def strip_markdown_scaffolding(md: str) -> str:
         if _HEADING_RE.match(line):
             # Headings (category, story title, KHẢO DỊ, Chú thích) are scaffolding.
             continue
+        line = _unquote(line.strip())
         line = _FOOTNOTE_DEF_RE.sub("", line)
         line = _INLINE_MARKER_RE.sub("", line)
         if line.strip():
@@ -163,10 +179,19 @@ def split_rendered_segments(md: str) -> Tuple[str, List[Tuple[int, str]]]:
     ``body_text`` is what :func:`strip_markdown_scaffolding` keeps **minus** the
     footnote-definition lines; those are returned separately, each carrying the
     page from its own ``(Trang P)`` prefix (``-1`` when missing/unparsable).
+    A footnote's indented continuation lines (verse rendered inside a footnote)
+    belong to that footnote. Verse ``> `` markers are stripped, text kept.
     """
     body_lines: List[str] = []
-    fn_entries: List[Tuple[int, str]] = []
+    fn_entries: List[List[Any]] = []
+    in_footnote = False
     for line in md.splitlines():
+        if in_footnote and (not line.strip() or _FOOTNOTE_CONT_RE.match(line)):
+            text = _INLINE_MARKER_RE.sub("", _unquote(line.strip()))
+            if text.strip():
+                fn_entries[-1][1] = f"{fn_entries[-1][1]}\n{text}".strip()
+            continue
+        in_footnote = False
         if _HRULE_RE.match(line):
             continue
         if _HEADING_RE.match(line):
@@ -176,13 +201,13 @@ def split_rendered_segments(md: str) -> Tuple[str, List[Tuple[int, str]]]:
         if match:
             page = int(match.group(2)) if match.group(2) else -1
             text = _INLINE_MARKER_RE.sub("", _FOOTNOTE_DEF_RE.sub("", stripped))
-            if text.strip():
-                fn_entries.append((page, text))
+            fn_entries.append([page, text])
+            in_footnote = True
             continue
-        line = _INLINE_MARKER_RE.sub("", line)
+        line = _INLINE_MARKER_RE.sub("", _unquote(stripped))
         if line.strip():
             body_lines.append(line)
-    return "\n".join(body_lines), fn_entries
+    return "\n".join(body_lines), [(page, text) for page, text in fn_entries if text.strip()]
 
 
 def score_matched(raw: str, rendered: str) -> Tuple[int, int]:
@@ -286,8 +311,16 @@ def parse_markdown_story(path: str) -> Dict[str, Any]:
         return parsed
 
     body_lines: List[str] = []
+    in_footnote = False
     for line in md.splitlines():
         stripped = line.strip()
+        if in_footnote and (not stripped or _FOOTNOTE_CONT_RE.match(line)):
+            text = _INLINE_MARKER_RE.sub("", _unquote(stripped))
+            if text:
+                num, page, prev = parsed["footnote_entries"][-1]
+                parsed["footnote_entries"][-1] = (num, page, f"{prev}\n{text}".strip())
+            continue
+        in_footnote = False
         if stripped.upper().startswith("### KHẢO DỊ"):
             parsed["khao_di_present"] = True
             continue
@@ -309,9 +342,11 @@ def parse_markdown_story(path: str) -> Dict[str, Any]:
             parsed["footnote_entries"].append(
                 (num, page, _INLINE_MARKER_RE.sub("", _FOOTNOTE_DEF_RE.sub("", stripped)))
             )
+            in_footnote = True
             continue
         if _HRULE_RE.match(line) or stripped.startswith("#"):
             continue
+        stripped = _unquote(stripped)
         if stripped:
             body_lines.append(stripped)
 
@@ -347,6 +382,24 @@ def check_structure(md_parsed: Dict[str, Any], toc_entry: Dict[str, Any]) -> Tup
         if num not in body_markers:
             flags.append(f"ORPHAN_FOOTNOTE:{num}")
 
+    # A dash alone on its own paragraph is a dialogue dash orphaned from its
+    # speech (the page-boundary dialogue bug) — regression guard.
+    if any(_BARE_DASH_RE.match(line.strip()) for line in md_parsed.get("body", "").splitlines()):
+        flags.append("BARE_DASH_PARAGRAPH")
+
+    # A number's pages must stay inside the story and in page order; with
+    # per-page renumbering a skipped page is fine, going backwards is not.
+    start, end = toc_entry.get("start_page"), toc_entry.get("end_page")
+    pages_by_num: Dict[int, List[int]] = {}
+    for num, page in footnotes:
+        pages_by_num.setdefault(num, []).append(page)
+    for num, pages in sorted(pages_by_num.items()):
+        out_of_range = start is not None and end is not None and any(
+            p != -1 and not (int(start) <= p <= int(end)) for p in pages
+        )
+        if out_of_range or pages != sorted(pages):
+            flags.append(f"FOOTNOTE_GAP:{num}")
+
     # Per-page footnote renumbering is expected: a duplicate number across
     # different pages is a note, never a failure.
     seen: Dict[int, List[int]] = {}
@@ -368,6 +421,31 @@ def check_structure(md_parsed: Dict[str, Any], toc_entry: Dict[str, Any]) -> Tup
         )
 
     return flags, notes
+
+
+def check_footnote_chains(
+    footnotes: List[Tuple[int, int]],
+    chains: List[FootnoteChain],
+    start_page: int,
+    end_page: int,
+) -> List[str]:
+    """Flag ``FOOTNOTE_GAP:N`` when a footnote continued over a page break is
+    missing a link in the rendered Markdown.
+
+    ``chains`` come from the raw PDF footer (:meth:`EdgeCaseSurvey.find_footnote_chains`):
+    footnote ``N`` spread over consecutive pages. Every chain page inside the
+    story must carry an ``[^N]: (Trang P)`` entry — a continuation that was
+    dropped or lost its number (rendered as some other ``[^M]``) breaks the chain.
+    """
+    present = set(footnotes)
+    flags: List[str] = []
+    for chain in chains:
+        pages = [p for p in chain.pages if start_page <= p <= end_page]
+        if any((chain.num, p) not in present for p in pages):
+            flag = f"FOOTNOTE_GAP:{chain.num}"
+            if flag not in flags:
+                flags.append(flag)
+    return flags
 
 
 def check_completeness(
@@ -468,6 +546,15 @@ class ExtractionValidator:
 
                 parsed = parse_markdown_story(md_path)
                 flags, notes = check_structure(parsed, story)
+                if doc is not None and not parsed.get("read_error"):
+                    chains = EdgeCaseSurvey.find_footnote_chains(
+                        doc, start_page, end_page, ExtractorConfig()
+                    )
+                    for flag in check_footnote_chains(
+                        parsed.get("footnotes", []), chains, start_page, end_page
+                    ):
+                        if flag not in flags:
+                            flags.append(flag)
 
                 rendered = normalize_for_diff(
                     strip_markdown_scaffolding(parsed.get("raw_markdown", ""))
