@@ -154,7 +154,7 @@ If all 10 sections extract clean, the final state should have `extracted_stories
 
 ### 2026-09-25 — Phase 3 stopped at section 3 (III. SỰ TÍCH CÁC CÂU VÍ) for human review
 
-Phases 0–2 are done and committed (tests first: `tests/`, 69 pytest cases, all green). Sections 1 (I, 25 stories) and 2 (II, 10 stories) regenerated and validated clean: 0 `REVIEW`, `rendered_coverage` 1.000 on every story. Section 3 (III, 26 stories) came back with **one `REVIEW` story**, so extraction of sections 4–10 was **not** started.
+Phases 0–2 are done and committed (tests first: `tests/`, 68 pytest cases, all green). Sections 1 (I, 25 stories) and 2 (II, 10 stories) regenerated and validated clean: 0 `REVIEW`, `rendered_coverage` 1.000 on every story. Section 3 (III, 26 stories) came back with **one `REVIEW` story**, so extraction of sections 4–10 was **not** started.
 
 **Flagged: story 52 — CHƯA ĐỖ ÔNG NGHÈ ĐÃ ĐE HÀNG TỔNG — `ORPHAN_MARKER:3`** (existing `check_structure` orphan-marker check; `rendered_coverage` 1.000, no other flag).
 
