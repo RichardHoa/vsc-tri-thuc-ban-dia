@@ -66,6 +66,10 @@ DEFAULT_THRESHOLD = 0.90
 #: status ``ERRATUM`` (reported separately, not ``REVIEW``). Only add an entry
 #: after checking data.pdf confirms the source, not the extractor, is at fault.
 KNOWN_SOURCE_ERRATA: Dict[Tuple[int, str], str] = {
+    (97, "EMPTY_FOOTNOTE:1"): (
+        "textbook error: data.pdf page 601 prints footnote 1's number with no "
+        "footnote text after it"
+    ),
     (52, "ORPHAN_MARKER:3"): (
         "textbook error: data.pdf page 357 prints footnote 3's number as '1', "
         "so its text (Theo Tạp chí chúng tôi (1910)) is merged into [^2]"
@@ -423,6 +427,13 @@ def check_structure(md_parsed: Dict[str, Any], toc_entry: Dict[str, Any]) -> Tup
     for num in sorted(set(footnote_nums)):
         if num not in body_markers:
             flags.append(f"ORPHAN_FOOTNOTE:{num}")
+
+    # A footnote definition with no text at all.
+    for num, _, text in md_parsed.get("footnote_entries", []):
+        if not text.strip():
+            flag = f"EMPTY_FOOTNOTE:{num}"
+            if flag not in flags:
+                flags.append(flag)
 
     # A dash alone on its own paragraph is a dialogue dash orphaned from its
     # speech (the page-boundary dialogue bug) — regression guard.

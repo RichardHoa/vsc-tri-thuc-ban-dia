@@ -245,3 +245,21 @@ def test_validate_section_merged_continuation_is_clean(tmp_path, data_pdf):
     _write(tmp_path, "story_001.md", md)
     results, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
     assert not [f for f in results[0].structural_flags if f.startswith("FOOTNOTE_GAP")]
+
+
+def test_empty_footnote_is_flagged():
+    parsed = {**_parsed("a[^1] b[^2].", [(1, 601), (2, 601)]),
+              "footnote_entries": [(1, 601, ""), (2, 601, "Theo Phan Kế Bính.")]}
+    flags, _ = check_structure(parsed, {})
+    assert flags == ["EMPTY_FOOTNOTE:1"]
+
+
+def test_story_97_empty_footnote_1_is_a_known_erratum():
+    remaining, errata = apply_source_errata(97, ["EMPTY_FOOTNOTE:1"])
+    assert remaining == [] and errata[0].startswith("EMPTY_FOOTNOTE:1")
+
+
+def test_parse_markdown_story_keeps_empty_footnote_entry(tmp_path):
+    md = "# C\n\n## 97. T\n\na[^1] b[^2].\n\n---\n\n### Chú thích\n\n[^1]: (Trang 601)\n\n[^2]: (Trang 601) Theo A.\n"
+    parsed = parse_markdown_story(_write(tmp_path, "s.md", md))
+    assert parsed["footnote_entries"] == [(1, 601, ""), (2, 601, "Theo A.")]

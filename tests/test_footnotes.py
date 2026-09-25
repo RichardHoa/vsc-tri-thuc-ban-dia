@@ -119,3 +119,29 @@ def test_real_page_536_three_footnotes(data_pdf):
     _, notes = FootnoteEngine.collect_story_footnotes(data_pdf, 536, 536, ExtractorConfig())
     assert [f.orig_num for f in notes] == [1, 2, 3]
     assert notes[1].text.startswith("Theo Truyện dân gian Miến-điện")
+
+
+def test_parse_doubled_footnote_number_is_read_as_expected_number():
+    # pages 607 ("33 Theo lời kể") and 609/611/612 ("11 Đoạn này") print the
+    # footnote number doubled; the body marker is the single number.
+    entries = FootnoteEngine.parse_footnote_text("1 Theo A. 2 Theo B. 33 Theo C.", 607)
+    assert [e["orig_num"] for e in entries] == [1, 2, 3]
+    assert entries[2]["text"] == "Theo C."
+    entries = FootnoteEngine.parse_footnote_text("11 Đoạn này theo Nguyễn Bính.", 609)
+    assert [(e["orig_num"], e["text"]) for e in entries] == [(1, "Đoạn này theo Nguyễn Bính.")]
+
+
+def test_parse_empty_footnote_does_not_swallow_the_next_number():
+    # page 601 prints footnote 1 with no text, then "2 Theo Phan Kế Bính ..."
+    entries = FootnoteEngine.parse_footnote_text("1 2 Theo Phan Kế Bính.", 601)
+    assert [(e["orig_num"], e["text"]) for e in entries] == [(1, ""), (2, "Theo Phan Kế Bính.")]
+
+
+def test_real_pages_601_607_609(data_pdf):
+    cfg = ExtractorConfig()
+    _, n601 = FootnoteEngine.collect_story_footnotes(data_pdf, 601, 601, cfg)
+    assert [(f.orig_num, f.text[:9]) for f in n601] == [(1, ""), (2, "Theo Phan")]
+    _, n607 = FootnoteEngine.collect_story_footnotes(data_pdf, 607, 607, cfg)
+    assert [f.orig_num for f in n607] == [1, 2, 3]
+    _, n609 = FootnoteEngine.collect_story_footnotes(data_pdf, 609, 609, cfg)
+    assert [f.orig_num for f in n609] == [1]

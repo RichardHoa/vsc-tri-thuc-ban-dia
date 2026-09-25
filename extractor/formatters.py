@@ -52,7 +52,7 @@ class MarkdownRenderer:
         pages = f"{fn.page}-{fn.end_page}" if fn.end_page and fn.end_page != fn.page else f"{fn.page}"
         prefix = f"[^{fn.orig_num}]: (Trang {pages})"
         if not fn.parts:
-            return f"{prefix} {fn.text}"
+            return f"{prefix} {fn.text}" if fn.text else prefix
         parts = list(fn.parts)
         head = parts.pop(0) if isinstance(parts[0], str) else ""
         blocks = [f"{prefix} {head}" if head else prefix]

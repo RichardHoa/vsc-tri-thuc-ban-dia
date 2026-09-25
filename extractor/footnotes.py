@@ -18,9 +18,11 @@ class FootnoteEngine:
     """Parses, re-indexes, and formats footnotes."""
 
     # "N. Text" / "N Text", or a number glued straight onto a capitalised word
-    # ("2Theo ..." on page 536) — never a number glued to digits (years).
+    # ("2Theo ..." on page 536) — never a number glued to digits (years). The
+    # preceding space is a lookbehind, not consumed, so an empty footnote
+    # ("1 2 Theo ..." on page 601) doesn't swallow the next number.
     FOOTNOTE_SPLIT_PAT = re.compile(
-        r'(?:^|\s+)(\d+)(?:[\.\s]+(?=[A-ZÀ-Ỵ\"\'“‘\(\[\d])|(?=[A-ZÀ-Ỵ]))'
+        r'(?:^|(?<=\s))(\d+)(?:[\.\s]+(?=[A-ZÀ-Ỵ\"\'“‘\(\[\d])|(?=[A-ZÀ-Ỵ]))'
     )
 
     @classmethod
@@ -44,9 +46,11 @@ class FootnoteEngine:
         expected_num = 1
 
         for match in cls.FOOTNOTE_SPLIT_PAT.finditer(text):
-            num_val = int(match.group(1))
-            if num_val == expected_num:
-                valid_splits.append((num_val, match.start(1), match.end()))
+            digits = match.group(1)
+            # The PDF sometimes prints a footnote number doubled ("33" for 3,
+            # "11" for 1 — pages 607, 609-612); the body marker is the single one.
+            if int(digits) == expected_num or digits == str(expected_num) * 2:
+                valid_splits.append((expected_num, match.start(1), match.end()))
                 expected_num += 1
 
         if not valid_splits:
