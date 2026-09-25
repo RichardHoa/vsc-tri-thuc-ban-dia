@@ -39,6 +39,8 @@ Two independent signal types, both computed per story in `ExtractionValidator.va
 
 **Structural checks** (`check_structure`, `check_footnote_chains`, `check_completeness`) — empty title/category/body, orphan footnote markers vs. orphan footnote entries, `BARE_DASH_PARAGRAPH` (a paragraph that is only a dialogue dash), `FOOTNOTE_GAP:N` (a footnote number's pages leave the story range or go backwards, or a footnote continued over a page break in the raw PDF footer is missing its `[^N]` entry on a continuation page), `LOW_DENSITY` (chars/page below `MIN_CHARS_PER_PAGE = 800`), section-level story-count drift against the printed MỤC LỤC. A duplicate footnote number across *different* pages is a `notes` entry (expected — footnotes renumber per page), not a flag; duplicate on the *same* page is also just a note.
 
+**Known source errata** — `KNOWN_SOURCE_ERRATA` (`extractor/validation.py`) allow-lists `(story_number, flag)` pairs caused by errors printed in the textbook itself. A listed flag moves to `source_errata`, and the story gets status `ERRATUM` (reported in its own section, not counted as needing review). Current entry: story 52 `ORPHAN_MARKER:3`.
+
 **Text alignment** — `rendered_coverage` (fraction of rendered Markdown prose found in the raw PDF page text) is the sole sort key and threshold metric (`DEFAULT_THRESHOLD = 0.90`, status `REVIEW` below it or on any structural flag). It is scored **per segment**, not as one whole-document diff:
 - The body prose (`split_rendered_segments`) is diffed against the story's full page-range raw text.
 - Each footnote body is diffed against a window anchored to its own `(Trang P)` page (falling back to the full range when `P` is missing or outside the story).
