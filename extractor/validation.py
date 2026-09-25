@@ -9,7 +9,8 @@ page range, and scores text fidelity with `difflib`.
 Two kinds of signal are produced:
 
 * **Structural checks** — empty title/category/body, orphan footnote markers,
-  orphan footnote entries, low character density, section-level story-count drift.
+  orphan footnote entries, bare ``-`` paragraphs, footnote-chain gaps, low
+  character density, section-level story-count drift.
 * **Text alignment** — `rendered_coverage` (what fraction of the rendered Markdown
   prose is found in the raw PDF page text) is the primary metric and the report's
   sort key / threshold. It is scored **per segment**: the body prose is diffed
@@ -49,13 +50,35 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import fitz  # PyMuPDF
 
+from .models import ExtractorConfig
 from .normalizer import TextNormalizer
+from .survey import EdgeCaseSurvey, FootnoteChain
 from .toc import SectionRange, TableOfContentsParser
 
 #: Below this many characters per PDF page a story is flagged ``LOW_DENSITY``.
 MIN_CHARS_PER_PAGE = 800
 
 DEFAULT_THRESHOLD = 0.90
+
+#: Structural flags caused by an error printed in the textbook itself, keyed by
+#: ``(story_number, flag)``. Story numbers are unique book-wide. A listed flag
+#: is moved out of ``structural_flags`` into ``source_errata``: the story gets
+#: status ``ERRATUM`` (reported separately, not ``REVIEW``). Only add an entry
+#: after checking data.pdf confirms the source, not the extractor, is at fault.
+KNOWN_SOURCE_ERRATA: Dict[Tuple[int, str], str] = {
+    (97, "EMPTY_FOOTNOTE:1"): (
+        "textbook error: data.pdf page 601 prints footnote 1's number with no "
+        "footnote text after it"
+    ),
+    (108, "ORPHAN_MARKER:2"): (
+        "textbook error: data.pdf page 657 prints both of its footnotes as '1.', "
+        "so footnote 2's text (Theo Đơ-jor-jơ (Degeorge) ...) is merged into [^1]"
+    ),
+    (52, "ORPHAN_MARKER:3"): (
+        "textbook error: data.pdf page 357 prints footnote 3's number as '1', "
+        "so its text (Theo Tạp chí chúng tôi (1910)) is merged into [^2]"
+    ),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -78,13 +101,31 @@ class StoryValidationResult:
     structural_flags: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
     threshold: float = DEFAULT_THRESHOLD
+    #: Allow-listed flags (``FLAG — reason``) from :data:`KNOWN_SOURCE_ERRATA`.
+    source_errata: List[str] = field(default_factory=list)
 
     @property
     def status(self) -> str:
-        """``REVIEW`` when below threshold or structurally flagged, else ``OK``."""
+        """``REVIEW`` when below threshold or structurally flagged; ``ERRATUM``
+        when the only issues are known textbook errors; else ``OK``."""
         if self.rendered_coverage < self.threshold or self.structural_flags:
             return "REVIEW"
+        if self.source_errata:
+            return "ERRATUM"
         return "OK"
+
+
+def apply_source_errata(story_number: int, flags: List[str]) -> Tuple[List[str], List[str]]:
+    """Split ``flags`` into ``(remaining_flags, errata)`` using :data:`KNOWN_SOURCE_ERRATA`."""
+    remaining: List[str] = []
+    errata: List[str] = []
+    for flag in flags:
+        reason = KNOWN_SOURCE_ERRATA.get((story_number, flag))
+        if reason is None:
+            remaining.append(flag)
+        else:
+            errata.append(f"{flag} — {reason}")
+    return remaining, errata
 
 
 def normalize_for_diff(text: str) -> str:
@@ -103,16 +144,37 @@ def normalize_for_diff(text: str) -> str:
 
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+")
 _HRULE_RE = re.compile(r"^\s*-{3,}\s*$")
-_FOOTNOTE_DEF_RE = re.compile(r"^\[\^(\d+)\]:\s*(?:\(Trang\s*(\d+)\)\s*)?")
+#: ``[^N]: (Trang P)`` or, for a footnote merged over a page break, ``(Trang P-Q)``.
+_FOOTNOTE_DEF_RE = re.compile(r"^\[\^(\d+)\]:\s*(?:\(Trang\s*(\d+)(?:\s*[-–]\s*(\d+))?\)\s*)?")
+
+
+def _def_pages(match: "re.Match") -> Tuple[int, int]:
+    """``(start, end)`` pages of a footnote definition (``(-1, -1)`` if missing)."""
+    if not match.group(2):
+        return (-1, -1)
+    start = int(match.group(2))
+    return (start, int(match.group(3)) if match.group(3) else start)
 _INLINE_MARKER_RE = re.compile(r"\[\^(\d+)\]")
+#: Blockquote marker of a rendered verse line (``> Cô hố cô hố.``).
+_BLOCKQUOTE_RE = re.compile(r"^\s{0,3}>\s?")
+#: A footnote's continuation block (verse / prose after a verse) is indented.
+_FOOTNOTE_CONT_RE = re.compile(r"^(?: {4}|\t)")
+#: A paragraph that is only a dialogue dash — a dash orphaned from its speech.
+_BARE_DASH_RE = re.compile(r"^[-–—]$")
+
+
+def _unquote(line: str) -> str:
+    """Drop a leading blockquote marker, keeping the verse text."""
+    return _BLOCKQUOTE_RE.sub("", line)
 
 
 def strip_markdown_scaffolding(md: str) -> str:
     """Drop Markdown scaffolding, leaving only prose that should exist in the PDF.
 
     Removes heading lines, the ``---`` rule, the ``### Chú thích`` label, the
-    ``[^N]: (Trang N)`` footnote prefixes and inline ``[^N]`` markers. Footnote
-    *body* text is kept — it is real PDF text.
+    ``[^N]: (Trang N)`` footnote prefixes, the ``> `` verse blockquote markers
+    (and a footnote continuation's indentation) and inline ``[^N]`` markers.
+    Footnote *body* text and verse text are kept — they are real PDF text.
     """
     kept: List[str] = []
     for line in md.splitlines():
@@ -121,6 +183,7 @@ def strip_markdown_scaffolding(md: str) -> str:
         if _HEADING_RE.match(line):
             # Headings (category, story title, KHẢO DỊ, Chú thích) are scaffolding.
             continue
+        line = _unquote(line.strip())
         line = _FOOTNOTE_DEF_RE.sub("", line)
         line = _INLINE_MARKER_RE.sub("", line)
         if line.strip():
@@ -157,16 +220,26 @@ def score_alignment(raw: str, rendered: str) -> Tuple[float, float]:
     return (min(rendered_coverage, 1.0), min(raw_coverage, 1.0))
 
 
-def split_rendered_segments(md: str) -> Tuple[str, List[Tuple[int, str]]]:
-    """Split rendered Markdown into ``(body_text, [(page, footnote_text), ...])``.
+def split_rendered_segments(md: str) -> Tuple[str, List[Tuple[int, int, str]]]:
+    """Split rendered Markdown into ``(body_text, [(page, end_page, footnote_text), ...])``.
 
     ``body_text`` is what :func:`strip_markdown_scaffolding` keeps **minus** the
     footnote-definition lines; those are returned separately, each carrying the
-    page from its own ``(Trang P)`` prefix (``-1`` when missing/unparsable).
+    pages from its own ``(Trang P)`` / ``(Trang P-Q)`` prefix (``-1`` when
+    missing/unparsable).
+    A footnote's indented continuation lines (verse rendered inside a footnote)
+    belong to that footnote. Verse ``> `` markers are stripped, text kept.
     """
     body_lines: List[str] = []
-    fn_entries: List[Tuple[int, str]] = []
+    fn_entries: List[List[Any]] = []
+    in_footnote = False
     for line in md.splitlines():
+        if in_footnote and (not line.strip() or _FOOTNOTE_CONT_RE.match(line)):
+            text = _INLINE_MARKER_RE.sub("", _unquote(line.strip()))
+            if text.strip():
+                fn_entries[-1][2] = f"{fn_entries[-1][2]}\n{text}".strip()
+            continue
+        in_footnote = False
         if _HRULE_RE.match(line):
             continue
         if _HEADING_RE.match(line):
@@ -174,15 +247,15 @@ def split_rendered_segments(md: str) -> Tuple[str, List[Tuple[int, str]]]:
         stripped = line.strip()
         match = _FOOTNOTE_DEF_RE.match(stripped)
         if match:
-            page = int(match.group(2)) if match.group(2) else -1
+            page, last = _def_pages(match)
             text = _INLINE_MARKER_RE.sub("", _FOOTNOTE_DEF_RE.sub("", stripped))
-            if text.strip():
-                fn_entries.append((page, text))
+            fn_entries.append([page, last, text])
+            in_footnote = True
             continue
-        line = _INLINE_MARKER_RE.sub("", line)
+        line = _INLINE_MARKER_RE.sub("", _unquote(stripped))
         if line.strip():
             body_lines.append(line)
-    return "\n".join(body_lines), fn_entries
+    return "\n".join(body_lines), [(p, e, text) for p, e, text in fn_entries if text.strip()]
 
 
 def score_matched(raw: str, rendered: str) -> Tuple[int, int]:
@@ -205,7 +278,7 @@ def score_segments(
     start_page: int,
     end_page: int,
     body: str,
-    fn_entries: List[Tuple[int, str]],
+    fn_entries: List[Tuple[int, int, str]],
     rendered_full: str,
 ) -> Tuple[float, float]:
     """Return ``(rendered_coverage, raw_coverage)`` using segment-aware scoring.
@@ -234,14 +307,14 @@ def score_segments(
         total_len += length
     del body_norm
 
-    for page, text in fn_entries:
+    for page, last, text in fn_entries:
         fn_norm = normalize_for_diff(text)
         if not fn_norm:
             continue
-        if page == -1 or page < start_page or page > end_page:
+        if page == -1 or page < start_page or last > end_page:
             matched, length = score_matched(full_raw, fn_norm)
         else:
-            window = extract_raw_page_text(doc, page, page)
+            window = extract_raw_page_text(doc, page, last)
             matched, length = score_matched(window, fn_norm)
             del window
         total_matched += matched
@@ -275,6 +348,7 @@ def parse_markdown_story(path: str) -> Dict[str, Any]:
         "body": "",
         "footnotes": [],
         "footnote_entries": [],
+        "footnote_ranges": [],
         "khao_di_present": False,
         "read_error": "",
     }
@@ -286,8 +360,16 @@ def parse_markdown_story(path: str) -> Dict[str, Any]:
         return parsed
 
     body_lines: List[str] = []
+    in_footnote = False
     for line in md.splitlines():
         stripped = line.strip()
+        if in_footnote and (not stripped or _FOOTNOTE_CONT_RE.match(line)):
+            text = _INLINE_MARKER_RE.sub("", _unquote(stripped))
+            if text:
+                num, page, prev = parsed["footnote_entries"][-1]
+                parsed["footnote_entries"][-1] = (num, page, f"{prev}\n{text}".strip())
+            continue
+        in_footnote = False
         if stripped.upper().startswith("### KHẢO DỊ"):
             parsed["khao_di_present"] = True
             continue
@@ -303,15 +385,18 @@ def parse_markdown_story(path: str) -> Dict[str, Any]:
             continue
         match = _FOOTNOTE_DEF_RE.match(stripped)
         if match:
-            page = int(match.group(2)) if match.group(2) else -1
+            page, last = _def_pages(match)
             num = int(match.group(1))
             parsed["footnotes"].append((num, page))
+            parsed["footnote_ranges"].append((num, page, last))
             parsed["footnote_entries"].append(
                 (num, page, _INLINE_MARKER_RE.sub("", _FOOTNOTE_DEF_RE.sub("", stripped)))
             )
+            in_footnote = True
             continue
         if _HRULE_RE.match(line) or stripped.startswith("#"):
             continue
+        stripped = _unquote(stripped)
         if stripped:
             body_lines.append(stripped)
 
@@ -347,6 +432,36 @@ def check_structure(md_parsed: Dict[str, Any], toc_entry: Dict[str, Any]) -> Tup
         if num not in body_markers:
             flags.append(f"ORPHAN_FOOTNOTE:{num}")
 
+    # A footnote definition with no text at all.
+    for num, _, text in md_parsed.get("footnote_entries", []):
+        if not text.strip():
+            flag = f"EMPTY_FOOTNOTE:{num}"
+            if flag not in flags:
+                flags.append(flag)
+
+    # A dash alone on its own paragraph is a dialogue dash orphaned from its
+    # speech (the page-boundary dialogue bug) — regression guard.
+    if any(_BARE_DASH_RE.match(line.strip()) for line in md_parsed.get("body", "").splitlines()):
+        flags.append("BARE_DASH_PARAGRAPH")
+
+    # A number's pages must stay inside the story and in page order; with
+    # per-page renumbering a skipped page is fine, going backwards is not.
+    start, end = toc_entry.get("start_page"), toc_entry.get("end_page")
+    ranges = md_parsed.get("footnote_ranges") or [(n, p, p) for n, p in footnotes]
+    pages_by_num: Dict[int, List[int]] = {}
+    for num, page, _ in ranges:
+        pages_by_num.setdefault(num, []).append(page)
+    last_by_num: Dict[int, List[int]] = {}
+    for num, _, last in ranges:
+        last_by_num.setdefault(num, []).append(last)
+    for num, pages in sorted(pages_by_num.items()):
+        out_of_range = start is not None and end is not None and any(
+            p != -1 and not (int(start) <= p <= int(end))
+            for p in pages + last_by_num[num]
+        )
+        if out_of_range or pages != sorted(pages):
+            flags.append(f"FOOTNOTE_GAP:{num}")
+
     # Per-page footnote renumbering is expected: a duplicate number across
     # different pages is a note, never a failure.
     seen: Dict[int, List[int]] = {}
@@ -368,6 +483,37 @@ def check_structure(md_parsed: Dict[str, Any], toc_entry: Dict[str, Any]) -> Tup
         )
 
     return flags, notes
+
+
+def check_footnote_chains(
+    footnotes: List[Tuple[int, ...]],
+    chains: List[FootnoteChain],
+    start_page: int,
+    end_page: int,
+) -> List[str]:
+    """Flag ``FOOTNOTE_GAP:N`` when a footnote continued over a page break is
+    missing a link in the rendered Markdown.
+
+    ``chains`` come from the raw PDF footer (:meth:`EdgeCaseSurvey.find_footnote_chains`):
+    footnote ``N`` spread over consecutive pages. Every chain page inside the
+    story must be covered by an ``[^N]`` entry — ``(Trang P-Q)`` when merged,
+    or ``(Trang P)`` — a continuation that was dropped or lost its number
+    (rendered as some other ``[^M]``) breaks the chain. ``footnotes`` holds
+    ``(num, page)`` or ``(num, page, end_page)`` tuples.
+    """
+    covered = set()
+    for entry in footnotes:
+        num, page = entry[0], entry[1]
+        last = entry[2] if len(entry) > 2 else page
+        covered.update((num, p) for p in range(page, last + 1))
+    flags: List[str] = []
+    for chain in chains:
+        pages = [p for p in chain.pages if start_page <= p <= end_page]
+        if any((chain.num, p) not in covered for p in pages):
+            flag = f"FOOTNOTE_GAP:{chain.num}"
+            if flag not in flags:
+                flags.append(flag)
+    return flags
 
 
 def check_completeness(
@@ -468,6 +614,15 @@ class ExtractionValidator:
 
                 parsed = parse_markdown_story(md_path)
                 flags, notes = check_structure(parsed, story)
+                if doc is not None and not parsed.get("read_error"):
+                    chains = EdgeCaseSurvey.find_footnote_chains(
+                        doc, start_page, end_page, ExtractorConfig()
+                    )
+                    for flag in check_footnote_chains(
+                        parsed.get("footnote_ranges", []), chains, start_page, end_page
+                    ):
+                        if flag not in flags:
+                            flags.append(flag)
 
                 rendered = normalize_for_diff(
                     strip_markdown_scaffolding(parsed.get("raw_markdown", ""))
@@ -477,6 +632,7 @@ class ExtractionValidator:
 
                 if char_per_page < MIN_CHARS_PER_PAGE:
                     flags.append("LOW_DENSITY")
+                flags, errata = apply_source_errata(number, flags)
 
                 if doc is not None and rendered:
                     body_seg, fn_segs = split_rendered_segments(
@@ -502,6 +658,7 @@ class ExtractionValidator:
                         structural_flags=flags,
                         notes=notes,
                         threshold=threshold,
+                        source_errata=errata,
                     )
                 )
                 del parsed, rendered
@@ -530,6 +687,7 @@ class ValidationReporter:
         ordered = cls._sorted(results)
         review = [r for r in ordered if r.status == "REVIEW"]
         flagged = [r for r in ordered if r.structural_flags]
+        errata = [r for r in ordered if r.source_errata]
 
         lines: List[str] = []
         lines.append("# Extraction Validation Report")
@@ -538,6 +696,7 @@ class ValidationReporter:
         lines.append(f"- Threshold (rendered_coverage): **{threshold:.2f}**")
         lines.append(f"- Needing review: **{len(review)}**")
         lines.append(f"- With structural flags: **{len(flagged)}**")
+        lines.append(f"- Known source errata: **{len(errata)}**")
         lines.append("")
         lines.append(
             "`rendered_coverage` = fraction of the rendered Markdown prose found in the raw PDF "
@@ -560,7 +719,8 @@ class ValidationReporter:
         lines.append("| # | Story | Pages | rendered_cov | raw_cov (info) | chars/page | Status | Flags |")
         lines.append("|---|---|---|---|---|---|---|---|")
         for r in ordered:
-            flags = ", ".join(r.structural_flags) if r.structural_flags else "-"
+            shown = r.structural_flags + [f"ERRATUM: {e.split(' — ')[0]}" for e in r.source_errata]
+            flags = ", ".join(shown) if shown else "-"
             lines.append(
                 f"| {r.story_number} | {r.title} | {r.start_page}-{r.end_page} | "
                 f"{r.rendered_coverage:.3f} | {r.raw_coverage:.3f} | {r.char_per_page:.0f} | "
@@ -575,6 +735,23 @@ class ValidationReporter:
                 lines.append(f"### Story {r.story_number} — {r.title} (`{r.markdown_file}`)")
                 for flag in r.structural_flags:
                     lines.append(f"- FLAG: {flag}")
+                lines.append("")
+        else:
+            lines.append("- None.")
+        lines.append("")
+
+        lines.append("## Known Source Errata")
+        lines.append("")
+        lines.append(
+            "Flags caused by an error printed in the textbook itself (allow-listed in "
+            "`KNOWN_SOURCE_ERRATA`); these stories are not counted as needing review."
+        )
+        lines.append("")
+        if errata:
+            for r in errata:
+                lines.append(f"### Story {r.story_number} — {r.title} (`{r.markdown_file}`)")
+                for entry in r.source_errata:
+                    lines.append(f"- ERRATUM: {entry}")
                 lines.append("")
         else:
             lines.append("- None.")
@@ -603,7 +780,8 @@ class ValidationReporter:
         lines: List[str] = []
         lines.append(
             f"Validated {len(results)} stories — {len(review)} need review, "
-            f"{len([r for r in ordered if r.structural_flags])} with structural flags."
+            f"{len([r for r in ordered if r.structural_flags])} with structural flags, "
+            f"{len([r for r in ordered if r.source_errata])} known source errata."
         )
         for flag in section_flags:
             lines.append(f"  [section] {flag}")
@@ -614,7 +792,8 @@ class ValidationReporter:
         lines.append(f"Worst {min(top_n, len(ordered))} by rendered_coverage:")
         lines.append(f"  {'#':>4}  {'rend':>6}  {'raw*':>6}  {'c/pg':>6}  status  title / flags")
         for r in ordered[:top_n]:
-            flags = (" | " + ", ".join(r.structural_flags)) if r.structural_flags else ""
+            shown = r.structural_flags + [f"ERRATUM: {e.split(' — ')[0]}" for e in r.source_errata]
+            flags = (" | " + ", ".join(shown)) if shown else ""
             lines.append(
                 f"  {r.story_number:>4}  {r.rendered_coverage:>6.3f}  {r.raw_coverage:>6.3f}  "
                 f"{r.char_per_page:>6.0f}  {r.status:<6}  {r.title}{flags}"

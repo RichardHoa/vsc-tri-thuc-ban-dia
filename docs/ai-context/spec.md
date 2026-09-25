@@ -14,15 +14,18 @@ Extracts the Vietnamese folk-tale anthology *Kho Tàng Truyện Cổ Tích Việ
 
 | Module | Responsibility |
 |---|---|
-| `models.py` | Dataclasses: `Footnote`, `StoryDefinition`, `StoryContent`, `ExtractorConfig` (all extraction thresholds/parameters). |
+| `models.py` | Dataclasses: `Verse`, `Footnote`, `StoryDefinition`, `StoryContent`, `ExtractorConfig` (all extraction thresholds/parameters). A story paragraph (`Paragraph`) is either a prose `str` or a `Verse` block; a `Footnote` carries flat `text` plus, only when it contains verse, `parts` (prose/`Verse` split), `end_page` (last page of a footnote merged across a page break), and `continued` for a continuation whose footnote starts before the story's range. |
 | `normalizer.py` | `TextNormalizer` — legacy-encoding repair, whitespace/punctuation cleanup, dialogue-line splitting, sentence-end detection. |
+| `verse.py` | `VerseDetector` — marks PDF lines as verse from span fonts + geometry: non-bold italic (≥80% of letters) and indented past `verse_min_x0` (130), or a run of ≥2 short italic lines at the margin. All-caps headings, numbered footnote/list lines and fully parenthesized notes such as `(Tiếp theo)` are never verse. |
+| `errata.py` | `PAGE_TEXT_FIXES` / `apply_page_text_fixes` — page-scoped literal repairs of errors printed in data.pdf, applied to body lines by the engine (page 560: story 91's footnote marker is typeset full-size, `đười ươi1.` → `đười ươi[^1].`). |
 | `geometry.py` | `PdfGeometryHelper` — y-coordinate classification of header/footer/footnote/body regions and scene dividers, per page. |
 | `toc.py` | `TableOfContentsParser` — parses the printed MỤC LỤC to resolve each Roman-numeral section's PDF page range (`SectionRange`), independent of story discovery. |
 | `discovery.py` | `StoryDiscoveryEngine` — scans page blocks for Roman category headers and `N. TITLE` story headers, computing each story's page-range boundary from the next story's start. |
-| `footnotes.py` | `FootnoteEngine` — parses footer-region text per page into individual numbered footnote entries (handles sequential multi-footnote blocks). |
-| `engine.py` | `StoryExtractionEngine` — walks a story's page range, filters header/footer lines out via `geometry.py`, assembles paragraphs/dialogue/KHẢO DỊ, inlines `[^N]` footnote markers. |
-| `formatters.py` | `MarkdownRenderer` (StoryContent → `.md`) and `TableOfContentsBuilder` (section map → `table_of_contents.json` dict). |
+| `footnotes.py` | `FootnoteEngine` — parses footer-region text per page into individual numbered footnote entries (handles sequential multi-footnote blocks). A footnote number may be glued to its text (`2Theo`) or printed doubled (`33` for 3), and an empty footnote doesn't swallow the next number. A number inside a parenthesis that closes after it (`(1. …; 2. …)`) is part of the note, not a new footnote. The unnumbered head of a page's footnote area continues the footnote left open on the previous page and is merged into it: one entry covering `page`–`end_page`, rendered `(Trang P-Q)`. Only when that footnote starts before the story's range is the continuation kept as its own `continued` entry. Verse lines inside a footnote become `Footnote.parts`. |
+| `engine.py` | `StoryExtractionEngine` — walks a story's page range, filters header/footer lines out via `geometry.py`, assembles paragraphs/dialogue/verse/KHẢO DỊ, inlines `[^N]` footnote markers. A dialogue item left open at a block end (a bare `-` anywhere, or unterminated text at the foot of a page) is held across the page loop and prepended to the next text. A superscript-size run holding a footnote number becomes `[^N]`. Punctuation typeset in the same run (`1. `) is kept after the marker. Verse runs are emitted in place as `Verse` blocks, merged across a page break. The `(Tiếp theo)` marker under a repeated section heading is skipped. |
+| `formatters.py` | `MarkdownRenderer` (StoryContent → `.md`; a `Verse` renders as a blockquote, one `> ` line per verse line, in the flow of the text; a footnote with verse continues as 4-space-indented blocks under its `[^N]:` line) and `TableOfContentsBuilder` (section map → `table_of_contents.json` dict). |
 | `pipeline.py` | `FolkStoryPipeline` — orchestrates discovery → per-story extraction → render → write, for one `ExtractorConfig`. |
+| `survey.py` | `EdgeCaseSurvey` — read-only scan of a page range for poem runs, footnotes continued over a page break (`find_footnote_chains`, also used by the validator), recurring per-page footnote numbers, and dialogue dashes left open at a block/page end, plus per-range layout stats; `render_catalog` writes the Markdown catalog. |
 | `validation.py` | `ExtractionValidator` / `ValidationReporter` — read-only accuracy checks over already-extracted output. → see "Validation & Scoring" below. |
 
 ## Data Flow
@@ -35,14 +38,18 @@ Extracts the Vietnamese folk-tale anthology *Kho Tàng Truyện Cổ Tích Việ
 
 Two independent signal types, both computed per story in `ExtractionValidator.validate_section` (`extractor/validation.py`):
 
-**Structural checks** (`check_structure`, `check_completeness`) — empty title/category/body, orphan footnote markers vs. orphan footnote entries, `LOW_DENSITY` (chars/page below `MIN_CHARS_PER_PAGE = 800`), section-level story-count drift against the printed MỤC LỤC. A duplicate footnote number across *different* pages is a `notes` entry (expected — footnotes renumber per page), not a flag; duplicate on the *same* page is also just a note.
+**Structural checks** (`check_structure`, `check_footnote_chains`, `check_completeness`) — empty title/category/body, orphan footnote markers vs. orphan footnote entries, `BARE_DASH_PARAGRAPH` (a paragraph that is only a dialogue dash), `EMPTY_FOOTNOTE:N` (a footnote definition with no text), `FOOTNOTE_GAP:N` (a footnote number's pages leave the story range or go backwards, or a footnote continued over a page break in the raw PDF footer has a page not covered by an `[^N]` entry's `(Trang P)` / `(Trang P-Q)` range), `LOW_DENSITY` (chars/page below `MIN_CHARS_PER_PAGE = 800`), section-level story-count drift against the printed MỤC LỤC. A duplicate footnote number across *different* pages is a `notes` entry (expected — footnotes renumber per page), not a flag; duplicate on the *same* page is also just a note.
+
+**Known source errata** — `KNOWN_SOURCE_ERRATA` (`extractor/validation.py`) allow-lists `(story_number, flag)` pairs caused by errors printed in the textbook itself. A listed flag moves to `source_errata`, and the story gets status `ERRATUM` (reported in its own section, not counted as needing review). Current entries: story 52 `ORPHAN_MARKER:3`, 97 `EMPTY_FOOTNOTE:1`, 108 `ORPHAN_MARKER:2`.
 
 **Text alignment** — `rendered_coverage` (fraction of rendered Markdown prose found in the raw PDF page text) is the sole sort key and threshold metric (`DEFAULT_THRESHOLD = 0.90`, status `REVIEW` below it or on any structural flag). It is scored **per segment**, not as one whole-document diff:
 - The body prose (`split_rendered_segments`) is diffed against the story's full page-range raw text.
-- Each footnote body is diffed against a window anchored to its own `(Trang P)` page (falling back to the full range when `P` is missing or outside the story).
+- Each footnote body is diffed against a window anchored to its own `(Trang P)` page, or `P-Q` range for a merged footnote (falling back to the full range when `P` is missing or outside the story).
 - Segment results are combined length-weighted (`score_segments`).
 
-This split exists because `MarkdownRenderer` relocates every footnote to an end-of-file `### Chú thích` block while the raw PDF keeps them interleaved per page; a whole-blob diff is defeated by that reordering and produces false-low scores on footnote-heavy stories. On the current full corpus (both extracted sections, 2026-09-23) `rendered_coverage` scores exactly `1.000` on every healthy story — it has no headroom below 1.000 on clean output, but sensitivity testing confirmed it still degrades correctly under injected contamination (see `process/general-plans/backlog/rendered-coverage-threshold-review_23-09-26.md`).
+Before diffing, the verse `> ` marker is stripped (text kept), and a footnote's indented continuation lines are attached to that footnote.
+
+This split exists because `MarkdownRenderer` relocates every footnote to an end-of-file `### Chú thích` block while the raw PDF keeps them interleaved per page; a whole-blob diff is defeated by that reordering and produces false-low scores on footnote-heavy stories. On the current corpus (sections I–X, 201 stories, 2026-09-25) `rendered_coverage` scores exactly `1.000` on every story — it has no headroom below 1.000 on clean output, but sensitivity testing confirmed it still degrades correctly under injected contamination (see `process/general-plans/backlog/rendered-coverage-threshold-review_23-09-26.md`).
 
 `raw_coverage` is **informational only** and must never be used to fail or sort a story — adjacent stories share PDF boundary pages, so a story's page range legitimately contains a neighbour's text, making raw coverage inherently noisy.
 
@@ -51,5 +58,7 @@ Memory bound: exactly one story's raw + rendered text is held at a time (`del` a
 ## CLI Contracts
 
 **`extract_folk_stories.py`** — `--pdf` (default `data.pdf`), `--start-page`/`--end-page` (default 86/200, ignored when `--section` given), `--output-dir` (default `extracted_stories`), `--story N` (single story only), `--section SPEC` (1-based MỤC LỤC index/range/list, e.g. `1`, `1-3`, `1,4`; resolves page ranges + `hard_stops` from the TOC and writes to `<output-dir>/<ROMAN>_<SLUG>/`), `--list-sections` (print and exit), `-v`. Non-zero exit only on an unhandled top-level exception.
+
+**`survey_data.py`** — `--pdf`, `--section SPEC` (default `1-10`), `--pages A-B` (explicit range instead of `--section`), `--catalog` (default `.scratch/folk-story-pipeline-fixes/edge-case-catalog.md`). Read-only, and writes only the catalog. Non-zero exit only on an unhandled top-level exception.
 
 **`validate_extraction.py`** — `--pdf`, `--section SPEC` (resolves `<output-dir>/<ROMAN>_<SLUG>/` as the input dir), `--output-dir`, `--input-dir` (explicit override), `--threshold` (default 0.90), `--report` (default `<input-dir>/validation_report.md`), `--extract-first` (opt-in: run extraction before validating), `-v`. Always exits 0 — failures are printed/reported, never raised past `main()`.

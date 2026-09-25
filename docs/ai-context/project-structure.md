@@ -7,7 +7,7 @@
 | Runtime | Python 3 (`from __future__ import annotations` throughout) | No async, no web framework |
 | PDF parsing | PyMuPDF (`fitz`), `>=1.24` (`requirements.txt`) | Only third-party dependency |
 | Output | Markdown (`.md`) + JSON | No database |
-| Tests | none yet | see `docs/ai-context/progress.md` |
+| Tests | pytest (`requirements-dev.txt`, `pytest.ini`) | `tests/`: synthetic in-memory PDFs (base-14 fonts) per layout feature + pinned real `data.pdf` instances |
 
 ## File Tree
 
@@ -16,11 +16,17 @@ vsc-tri-thuc-ban-dia/
 ├── data.pdf                        # Source scanned/OCR'd PDF anthology (not extraction output)
 ├── extract_folk_stories.py         # CLI: discover/extract/render stories → Markdown + TOC json
 ├── validate_extraction.py          # CLI: validate already-extracted output against data.pdf
+├── survey_data.py                  # CLI: edge-case survey of data.pdf → Markdown catalog
 ├── requirements.txt
+├── requirements-dev.txt            # + pytest
+├── pytest.ini
+├── tests/                          # pytest suite (conftest.py builds synthetic PDFs)
 ├── extractor/                      # Library package — see spec.md "Core Modules"
 │   ├── __init__.py                 # Public re-exports for the two CLI entrypoints
 │   ├── models.py
 │   ├── normalizer.py
+│   ├── errata.py
+│   ├── verse.py
 │   ├── geometry.py
 │   ├── toc.py
 │   ├── discovery.py
@@ -28,8 +34,10 @@ vsc-tri-thuc-ban-dia/
 │   ├── engine.py
 │   ├── formatters.py
 │   ├── pipeline.py
+│   ├── survey.py
 │   └── validation.py
-├── extracted_stories/              # Extraction output, --section mode: <ROMAN>_<SLUG>/ per section
+├── extracted_stories/              # Extraction output, --section mode: <ROMAN>_<SLUG>/ per section (gitignored)
+│   ├── I_NGUON_GOC_SU_VAT/
 │   ├── II_SU_TICH_DAT_NUOC_VIET/
 │   └── III_SU_TICH_CAC_CAU_VI/
 │       ├── story_NNN.md            # One per extracted story
@@ -38,6 +46,7 @@ vsc-tri-thuc-ban-dia/
 ├── I_stories/                      # Extraction output for section I (flat --start-page/--end-page run)
 │   ├── story_NNN.md
 │   └── table_of_contents.json
+├── .scratch/                       # Per-effort working artifacts (plans, edge-case catalog) — not system docs
 ├── docs/
 │   ├── ai-context/                 # This bundle: spec.md, project-structure.md, progress.md, deployment-infrastructure.md
 │   ├── open-issues/, business/, design-brand/, legal/  # Empty (.gitkeep only)

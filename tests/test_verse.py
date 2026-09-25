@@ -99,6 +99,23 @@ def test_real_page_102_poem(data_pdf):
 
 
 def test_real_page_909_margin_footnote_poem(data_pdf):
+    # page 909 has an indented body poem ("Gặp ñình chớ tới, ...") and a
+    # 4-line footnote quotation set italic at the margin ("Phùng ñình ...").
     verse = [t for t, v in _lines(data_pdf, 908) if v]
-    assert len(verse) == 4
-    assert verse[0].startswith("Phùng")
+    assert [t for t in verse if t.startswith("Phùng")] == [
+        "Phùng ñình mạc túc,", "Phùng thang mạc dục,", "Phùng kê mạc trục,",
+    ]
+    assert "Phi tam, phi tứ, phi lục." in verse
+    assert "Gặp ñình chớ tới," in verse
+
+
+def test_parenthesized_running_marker_is_not_verse(make_pdf):
+    # "(Tiếp theo)" = "(continued)", set italic + indented under a restarted
+    # section heading (pages 296, 1160) — a running marker, not a poem.
+    doc = make_pdf([SyntheticPage([Item(284, 100, "(Tiep theo)", "tiit")])])
+    assert _lines(doc) == [("(Tiep theo)", False)]
+
+
+def test_bold_italic_caption_is_not_verse(make_pdf):
+    doc = make_pdf([SyntheticPage([Item(266, 100, "Picture of the author", "tibi")])])
+    assert _lines(doc) == [("Picture of the author", False)]

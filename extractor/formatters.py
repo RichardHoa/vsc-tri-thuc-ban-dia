@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 from typing import Dict, List
 
-from .models import StoryContent
+from .models import Footnote, Paragraph, StoryContent, Verse
 
 
 class MarkdownRenderer:
@@ -24,20 +24,42 @@ class MarkdownRenderer:
             lines.append(f"## {story.story_number}. {story.title}\n")
 
         for p in story.paragraphs:
-            lines.append(f"{p}\n")
+            lines.append(f"{MarkdownRenderer.render_paragraph(p)}\n")
 
         if story.khao_di:
             lines.append("### KHẢO DỊ\n")
             for p in story.khao_di:
-                lines.append(f"{p}\n")
+                lines.append(f"{MarkdownRenderer.render_paragraph(p)}\n")
 
         if story.footnotes:
             lines.append("---\n")
             lines.append("### Chú thích\n")
             for fn in story.footnotes:
-                lines.append(f"[^{fn.orig_num}]: (Trang {fn.page}) {fn.text}\n")
+                lines.append(f"{MarkdownRenderer.render_footnote(fn)}\n")
 
         return "\n".join(lines)
+
+    @staticmethod
+    def render_paragraph(p: Paragraph) -> str:
+        """Prose as-is; verse as a blockquote with one ``> `` line per verse line."""
+        if isinstance(p, Verse):
+            return "\n".join(f"> {line}" for line in p.lines)
+        return p
+
+    @staticmethod
+    def render_footnote(fn: Footnote) -> str:
+        """``[^N]: (Trang P) text``; an entry with verse continues as indented blocks."""
+        pages = f"{fn.page}-{fn.end_page}" if fn.end_page and fn.end_page != fn.page else f"{fn.page}"
+        prefix = f"[^{fn.orig_num}]: (Trang {pages})"
+        if not fn.parts:
+            return f"{prefix} {fn.text}" if fn.text else prefix
+        parts = list(fn.parts)
+        head = parts.pop(0) if isinstance(parts[0], str) else ""
+        blocks = [f"{prefix} {head}" if head else prefix]
+        for part in parts:
+            rendered = MarkdownRenderer.render_paragraph(part)
+            blocks.append("\n".join(f"    {line}" for line in rendered.split("\n")))
+        return "\n\n".join(blocks)
 
 
 class TableOfContentsBuilder:

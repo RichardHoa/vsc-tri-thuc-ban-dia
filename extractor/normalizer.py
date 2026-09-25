@@ -93,6 +93,14 @@ class TextNormalizer:
 
         return result_lines
 
+    CONTINUATION_MARKER = re.compile(r'^\(\s*Tiếp\s+theo\s*\)\.?$', re.IGNORECASE)
+
+    @classmethod
+    def is_continuation_marker(cls, text: str) -> bool:
+        """``(Tiếp theo)`` ("continued") printed under a section heading that is
+        repeated at a volume boundary — a running marker, never story text."""
+        return bool(cls.CONTINUATION_MARKER.match(text.strip()))
+
     @classmethod
     def ends_sentence(cls, text: str) -> bool:
         """Determines if a paragraph ends with terminal punctuation."""
