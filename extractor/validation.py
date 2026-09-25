@@ -12,10 +12,16 @@ Two kinds of signal are produced:
   orphan footnote entries, low character density, section-level story-count drift.
 * **Text alignment** — `rendered_coverage` (what fraction of the rendered Markdown
   prose is found in the raw PDF page text) is the primary metric and the report's
-  sort key / threshold. `raw_coverage` is **informational only**: adjacent stories
-  share PDF boundary pages, so a story's page range legitimately contains a
-  neighbour's text and raw coverage is inherently noisy. It must never be used to
-  fail or sort a story.
+  sort key / threshold. It is scored **per segment**: the body prose is diffed
+  against the story's full page range, and each footnote body is diffed against a
+  window anchored to its own ``(Trang P)`` page, then the segments are combined
+  length-weighted. This is required because ``MarkdownRenderer`` relocates every
+  footnote body to an end-of-file block while the raw PDF keeps them interleaved
+  per page; a whole-blob ``difflib`` diff is defeated by that reordering and
+  reports false-low scores on footnote-heavy stories. `raw_coverage` is
+  **informational only**: adjacent stories share PDF boundary pages, so a story's
+  page range legitimately contains a neighbour's text and raw coverage is
+  inherently noisy. It must never be used to fail or sort a story.
 
 Memory is deliberately bounded: exactly one story's raw + rendered text is held at
 a time, never a whole-section blob (`difflib.SequenceMatcher` is quadratic-ish).
@@ -151,6 +157,102 @@ def score_alignment(raw: str, rendered: str) -> Tuple[float, float]:
     return (min(rendered_coverage, 1.0), min(raw_coverage, 1.0))
 
 
+def split_rendered_segments(md: str) -> Tuple[str, List[Tuple[int, str]]]:
+    """Split rendered Markdown into ``(body_text, [(page, footnote_text), ...])``.
+
+    ``body_text`` is what :func:`strip_markdown_scaffolding` keeps **minus** the
+    footnote-definition lines; those are returned separately, each carrying the
+    page from its own ``(Trang P)`` prefix (``-1`` when missing/unparsable).
+    """
+    body_lines: List[str] = []
+    fn_entries: List[Tuple[int, str]] = []
+    for line in md.splitlines():
+        if _HRULE_RE.match(line):
+            continue
+        if _HEADING_RE.match(line):
+            continue
+        stripped = line.strip()
+        match = _FOOTNOTE_DEF_RE.match(stripped)
+        if match:
+            page = int(match.group(2)) if match.group(2) else -1
+            text = _INLINE_MARKER_RE.sub("", _FOOTNOTE_DEF_RE.sub("", stripped))
+            if text.strip():
+                fn_entries.append((page, text))
+            continue
+        line = _INLINE_MARKER_RE.sub("", line)
+        if line.strip():
+            body_lines.append(line)
+    return "\n".join(body_lines), fn_entries
+
+
+def score_matched(raw: str, rendered: str) -> Tuple[int, int]:
+    """Return ``(matched_chars, len(rendered))`` for one segment.
+
+    Same ``SequenceMatcher(..., autojunk=False)`` call as :func:`score_alignment`;
+    returns raw counts so segments can be combined length-weighted.
+    """
+    if not rendered:
+        return (0, 0)
+    if not raw:
+        return (0, len(rendered))
+    matcher = difflib.SequenceMatcher(None, raw, rendered, autojunk=False)
+    matched = sum(block.size for block in matcher.get_matching_blocks())
+    return (min(matched, len(rendered)), len(rendered))
+
+
+def score_segments(
+    doc: "fitz.Document",
+    start_page: int,
+    end_page: int,
+    body: str,
+    fn_entries: List[Tuple[int, str]],
+    rendered_full: str,
+) -> Tuple[float, float]:
+    """Return ``(rendered_coverage, raw_coverage)`` using segment-aware scoring.
+
+    The body is scored against the story's full page range; each footnote is
+    scored against its own ``(Trang P)`` page window (falling back to the full
+    range when the page is missing or outside the story). Segment results are
+    combined length-weighted. ``raw_coverage`` is the unchanged whole-blob value.
+
+    Memory: the full-range raw text is loaded once per story and each per-page
+    window is released immediately after use.
+    """
+    full_raw = extract_raw_page_text(doc, start_page, end_page)
+    if not full_raw:
+        return (0.0, 0.0)
+
+    _, raw_cov = score_alignment(full_raw, rendered_full)
+
+    total_matched = 0
+    total_len = 0
+
+    body_norm = normalize_for_diff(body)
+    if body_norm:
+        matched, length = score_matched(full_raw, body_norm)
+        total_matched += matched
+        total_len += length
+    del body_norm
+
+    for page, text in fn_entries:
+        fn_norm = normalize_for_diff(text)
+        if not fn_norm:
+            continue
+        if page == -1 or page < start_page or page > end_page:
+            matched, length = score_matched(full_raw, fn_norm)
+        else:
+            window = extract_raw_page_text(doc, page, page)
+            matched, length = score_matched(window, fn_norm)
+            del window
+        total_matched += matched
+        total_len += length
+        del fn_norm
+
+    del full_raw
+    rendered_cov = (total_matched / total_len) if total_len else 0.0
+    return (min(rendered_cov, 1.0), raw_cov)
+
+
 # ---------------------------------------------------------------------------
 # Section B — structural checks
 # ---------------------------------------------------------------------------
@@ -160,14 +262,19 @@ def parse_markdown_story(path: str) -> Dict[str, Any]:
     """Parse a rendered ``story_NNN.md`` into its structural parts.
 
     Returns ``{title, category, body, footnotes: List[Tuple[orig_num, page]],
-    khao_di_present: bool}``. Missing/unreadable files yield empty structures
-    rather than raising (the CLI is a reporting tool, never a crasher).
+    footnote_entries: List[Tuple[orig_num, page, text]], khao_di_present: bool}``.
+    Missing/unreadable files yield empty structures rather than raising (the CLI
+    is a reporting tool, never a crasher).
+
+    ``footnotes`` stays ``(num, page)`` only — :func:`check_structure` depends on
+    it; ``footnote_entries`` is the additive variant carrying the footnote text.
     """
     parsed: Dict[str, Any] = {
         "title": "",
         "category": "",
         "body": "",
         "footnotes": [],
+        "footnote_entries": [],
         "khao_di_present": False,
         "read_error": "",
     }
@@ -197,7 +304,11 @@ def parse_markdown_story(path: str) -> Dict[str, Any]:
         match = _FOOTNOTE_DEF_RE.match(stripped)
         if match:
             page = int(match.group(2)) if match.group(2) else -1
-            parsed["footnotes"].append((int(match.group(1)), page))
+            num = int(match.group(1))
+            parsed["footnotes"].append((num, page))
+            parsed["footnote_entries"].append(
+                (num, page, _INLINE_MARKER_RE.sub("", _FOOTNOTE_DEF_RE.sub("", stripped)))
+            )
             continue
         if _HRULE_RE.match(line) or stripped.startswith("#"):
             continue
@@ -368,9 +479,13 @@ class ExtractionValidator:
                     flags.append("LOW_DENSITY")
 
                 if doc is not None and rendered:
-                    raw = extract_raw_page_text(doc, start_page, end_page)
-                    rendered_cov, raw_cov = score_alignment(raw, rendered)
-                    del raw  # bound memory: never hold two stories' raw text
+                    body_seg, fn_segs = split_rendered_segments(
+                        parsed.get("raw_markdown", "")
+                    )
+                    rendered_cov, raw_cov = score_segments(
+                        doc, start_page, end_page, body_seg, fn_segs, rendered
+                    )
+                    del body_seg, fn_segs
                 else:
                     rendered_cov, raw_cov = 0.0, 0.0
 

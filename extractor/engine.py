@@ -52,6 +52,7 @@ class StoryExtractionEngine:
             page_num = pno + 1
             page = doc[pno]
             h_sep_y = PdfGeometryHelper.find_footer_separator_y(page)
+            body_max_y = PdfGeometryHelper.body_max_y(h_sep_y, config.footer_fallback_y)
 
             blocks = page.get_text('dict').get('blocks', [])
             blocks.sort(key=lambda b: (b['bbox'][1], b['bbox'][0]))
@@ -81,7 +82,7 @@ class StoryExtractionEngine:
 
                         # Footnote superscript detection
                         if (s['size'] < config.superscript_max_font_size
-                                and stext.strip().isdigit() and line_y0 < config.footer_fallback_y):
+                                and stext.strip().isdigit() and line_y0 < body_max_y):
                             fn_num = stext.strip()
                             line_text += f"[^{fn_num}]"
                         else:

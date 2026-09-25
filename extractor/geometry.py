@@ -65,6 +65,17 @@ class PdfGeometryHelper:
             return y0 >= (h_sep_y - 5.0)
         return y0 > footer_fallback_y and bool(re.match(r'^\d+[\.\s]+[A-ZÀ-Ỵ]', line_text.strip()))
 
+    @staticmethod
+    def body_max_y(h_sep_y: Optional[float], footer_fallback_y: float) -> float:
+        """Lowest y a body line can occupy on this page.
+
+        Mirrors is_footer_line: when the page draws a footer separator that
+        separator is the true boundary; otherwise fall back to the flat constant.
+        """
+        if h_sep_y is not None:
+            return h_sep_y - 5.0
+        return footer_fallback_y
+
     @classmethod
     def is_scene_divider(cls, text: str) -> bool:
         """Detects scene divider markers like * or * * *."""
