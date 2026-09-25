@@ -7,6 +7,7 @@ from .models import (
     StoryDefinition,
     StoryContent,
     ExtractorConfig,
+    Verse,
 )
 from .normalizer import TextNormalizer
 from .geometry import PdfGeometryHelper
@@ -16,6 +17,8 @@ from .engine import StoryExtractionEngine
 from .formatters import MarkdownRenderer, TableOfContentsBuilder
 from .toc import SectionRange, TableOfContentsParser, TocEntry
 from .pipeline import FolkStoryPipeline
+from .verse import VerseDetector
+from .survey import EdgeCaseSurvey, FootnoteChain
 from .validation import (
     ExtractionValidator,
     StoryValidationResult,
@@ -31,6 +34,10 @@ __all__ = [
     "StoryDefinition",
     "StoryContent",
     "ExtractorConfig",
+    "Verse",
+    "VerseDetector",
+    "EdgeCaseSurvey",
+    "FootnoteChain",
     "TextNormalizer",
     "PdfGeometryHelper",
     "FootnoteEngine",
