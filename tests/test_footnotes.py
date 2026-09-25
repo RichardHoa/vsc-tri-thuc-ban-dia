@@ -43,21 +43,21 @@ def _two_page_doc(make_pdf):
     ])
 
 
-def test_continuation_inherits_previous_pages_last_number(make_pdf):
+def test_continuation_is_merged_into_the_footnote_it_continues(make_pdf):
     doc = _two_page_doc(make_pdf)
     _, notes = FootnoteEngine.collect_story_footnotes(doc, 1, 2, ExtractorConfig())
-    assert [(f.orig_num, f.page, f.continued) for f in notes] == [
-        (1, 1, False),
-        (2, 1, False),
-        (2, 2, True),
-        (1, 2, False),
+    assert [(f.orig_num, f.page, f.end_page) for f in notes] == [
+        (1, 1, 1),
+        (2, 1, 2),
+        (1, 2, 2),
     ]
-    assert notes[2].text == "carries on over the page."
+    assert notes[1].text == "Second note begins and carries on over the page."
 
 
 def test_continuation_on_first_page_looks_at_page_before_range(make_pdf):
     doc = _two_page_doc(make_pdf)
     _, notes = FootnoteEngine.collect_story_footnotes(doc, 2, 2, ExtractorConfig())
+    # the note it continues lies before the story's range: kept as its own entry
     assert [(f.orig_num, f.page, f.continued) for f in notes] == [(2, 2, True), (1, 2, False)]
 
 
@@ -88,19 +88,34 @@ def test_footnote_verse_is_kept_as_verse_part(make_pdf):
     assert notes[1].text == "Theo Sach B."
 
 
-def test_real_page_176_continues_footnote_2_of_page_175(data_pdf):
+def test_real_page_175_176_footnote_2_is_one_merged_entry(data_pdf):
     _, notes = FootnoteEngine.collect_story_footnotes(data_pdf, 175, 176, ExtractorConfig())
-    on_176 = [f for f in notes if f.page == 176]
-    assert on_176[0].orig_num == 2
-    assert on_176[0].continued is True
-    assert on_176[0].text.startswith("Truyện bà mẹ Mục Liên")
+    two = [f for f in notes if f.orig_num == 2]
+    assert len(two) == 1
+    assert (two[0].page, two[0].end_page) == (175, 176)
+    assert two[0].text.startswith("Xem thêm Lược khảo")
+    assert "Truyện bà mẹ Mục Liên" in two[0].text
 
 
-def test_real_page_241_continuation_verse_is_no_longer_dropped(data_pdf):
+def test_real_page_240_241_verse_couplet_is_merged(data_pdf):
     _, notes = FootnoteEngine.collect_story_footnotes(data_pdf, 240, 241, ExtractorConfig())
-    four_240 = [f for f in notes if f.page == 240 and f.orig_num == 4][0]
-    assert four_240.parts[-1] == Verse(["Đôi ta như chim tử quy."])
-    on_241 = [f for f in notes if f.page == 241]
-    assert (on_241[0].orig_num, on_241[0].continued) == (4, True)
-    assert on_241[0].parts == [Verse(["Đêm nghe thấy tiếng, ngày đi phương nào."])]
-    assert [f.orig_num for f in on_241[1:]] == [1, 2]
+    four = [f for f in notes if f.orig_num == 4]
+    assert len(four) == 1 and (four[0].page, four[0].end_page) == (240, 241)
+    assert four[0].parts[-1] == Verse(
+        ["Đôi ta như chim tử quy.", "Đêm nghe thấy tiếng, ngày đi phương nào."]
+    )
+    assert [f.orig_num for f in notes if f.page == 241] == [1, 2]
+
+
+def test_parse_number_glued_to_text_is_split():
+    # page 536 prints "2Theo Truyện dân gian Miến-điện" (no space after the number)
+    entries = FootnoteEngine.parse_footnote_text("1 Theo A. 2Theo B. 3 Theo C.", 536)
+    assert [(e["orig_num"], e["text"]) for e in entries] == [
+        (1, "Theo A."), (2, "Theo B."), (3, "Theo C."),
+    ]
+
+
+def test_real_page_536_three_footnotes(data_pdf):
+    _, notes = FootnoteEngine.collect_story_footnotes(data_pdf, 536, 536, ExtractorConfig())
+    assert [f.orig_num for f in notes] == [1, 2, 3]
+    assert notes[1].text.startswith("Theo Truyện dân gian Miến-điện")

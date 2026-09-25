@@ -61,3 +61,9 @@ def test_footnote_starting_with_verse_then_prose():
         "    > Đêm nghe.\n\n"
         "    Rồi.\n"
     )
+
+
+def test_merged_footnote_shows_page_range():
+    fn = Footnote(id=2, orig_num=2, page=175, end_page=176, text="Xem thêm. Truyện bà mẹ.")
+    md = MarkdownRenderer.render(_story(paragraphs=["x[^2]."], footnotes=[fn]))
+    assert md.endswith("[^2]: (Trang 175-176) Xem thêm. Truyện bà mẹ.\n")

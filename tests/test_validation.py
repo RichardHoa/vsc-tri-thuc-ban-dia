@@ -32,12 +32,9 @@ Có lẽ đây cũng là một dị bản.
 
 [^2]: (Trang 102) Theo Nguyễn Văn Ngọc.
 
-[^4]: (Trang 240) Có câu ca dao:
+[^4]: (Trang 240-241) Có câu ca dao:
 
     > Đôi ta như chim tử quy.
-
-[^4]: (Trang 241)
-
     > Đêm nghe thấy tiếng.
 
     Hết.
@@ -66,10 +63,9 @@ def test_split_segments_blockquote_body_and_footnote_continuations():
         "Bay về mà ăn!",
         "Có lẽ đây cũng là một dị bản.",
     ]
-    assert [(p, normalize_for_diff(t)) for p, t in fns] == [
-        (102, "Theo Nguyễn Văn Ngọc."),
-        (240, "Có câu ca dao: Đôi ta như chim tử quy."),
-        (241, "Đêm nghe thấy tiếng. Hết."),
+    assert [(p, e, normalize_for_diff(t)) for p, e, t in fns] == [
+        (102, 102, "Theo Nguyễn Văn Ngọc."),
+        (240, 241, "Có câu ca dao: Đôi ta như chim tử quy. Đêm nghe thấy tiếng. Hết."),
     ]
 
 
@@ -77,8 +73,11 @@ def test_parse_markdown_story_attaches_indented_lines_to_footnote(tmp_path):
     parsed = parse_markdown_story(_write(tmp_path, "s.md", MD))
     assert "Đôi ta" not in parsed["body"]
     assert "Cô hố cô hố." in parsed["body"].splitlines()
-    assert parsed["footnotes"] == [(2, 102), (4, 240), (4, 241)]
-    assert normalize_for_diff(parsed["footnote_entries"][2][2]) == "Đêm nghe thấy tiếng. Hết."
+    assert parsed["footnotes"] == [(2, 102), (4, 240)]
+    assert parsed["footnote_ranges"] == [(2, 102, 102), (4, 240, 241)]
+    assert normalize_for_diff(parsed["footnote_entries"][1][2]) == (
+        "Có câu ca dao: Đôi ta như chim tử quy. Đêm nghe thấy tiếng. Hết."
+    )
 
 
 def _parsed(body, footnotes=()):
@@ -130,6 +129,19 @@ def test_chain_with_lost_continuation_number_flags_gap():
     # pre-fix rendering: the page-176 continuation of [^2] came out as [^1]
     chains = [FootnoteChain(num=2, pages=[175, 176], snippet="")]
     assert check_footnote_chains([(2, 175), (1, 176)], chains, 170, 180) == ["FOOTNOTE_GAP:2"]
+
+
+def test_merged_chain_range_is_complete():
+    chains = [FootnoteChain(num=2, pages=[175, 176], snippet="")]
+    assert check_footnote_chains([(2, 175, 176)], chains, 170, 180) == []
+
+
+def test_merged_range_out_of_story_flags_gap():
+    flags, _ = check_structure(
+        {**_parsed("a[^2].", [(2, 175)]), "footnote_ranges": [(2, 175, 177)]},
+        {"start_page": 170, "end_page": 176},
+    )
+    assert "FOOTNOTE_GAP:2" in flags
 
 
 def test_chain_pages_outside_story_are_ignored():
@@ -221,3 +233,15 @@ def test_validate_section_story_52_is_erratum(tmp_path, data_pdf):
     results, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
     assert "ORPHAN_MARKER:3" not in results[0].structural_flags
     assert results[0].source_errata and results[0].source_errata[0].startswith("ORPHAN_MARKER:3")
+
+
+def test_validate_section_merged_continuation_is_clean(tmp_path, data_pdf):
+    _toc(tmp_path, 175, 176)
+    md = (
+        "# C\n\n## 1. T\n\nx[^1] y[^2].\n\n---\n\n### Chú thích\n\n"
+        "[^1]: (Trang 175) Theo Lăng-đờ (Landes). Sách đã dẫn.\n\n"
+        "[^2]: (Trang 175-176) Xem thêm. Truyện bà mẹ Mục Liên đại khái như sau:\n"
+    )
+    _write(tmp_path, "story_001.md", md)
+    results, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
+    assert not [f for f in results[0].structural_flags if f.startswith("FOOTNOTE_GAP")]

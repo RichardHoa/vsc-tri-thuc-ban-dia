@@ -185,3 +185,39 @@ def test_real_page_102_poem_is_verse_with_footnote_marker(data_pdf, section_i_st
     story = StoryExtractionEngine.extract_single_story(data_pdf, story_def, ExtractorConfig())
     verses = [p for p in story.paragraphs + story.khao_di if isinstance(p, Verse)]
     assert Verse(["Cô hố cô hố.", "Lúa đã trổ,", "Đỗ đã chín,", "Bay về mà ăn![^2]"]) in verses
+
+
+
+# --- section-restart marker and page-560 marker exception -----------------
+
+
+def test_continuation_marker_is_recognized():
+    from extractor.normalizer import TextNormalizer
+    assert TextNormalizer.is_continuation_marker("(Tiếp theo)")
+    assert TextNormalizer.is_continuation_marker("( Tiếp theo )")
+    assert not TextNormalizer.is_continuation_marker("(Tiếp theo) Ngày xưa")
+    assert not TextNormalizer.is_continuation_marker("Tiếp theo đó, anh đi.")
+
+
+def test_real_story_41_does_not_start_with_tiep_theo(data_pdf, section_iii_stories):
+    story = StoryExtractionEngine.extract_single_story(
+        data_pdf, section_iii_stories[41], ExtractorConfig()
+    )
+    assert story.paragraphs[0].startswith("Ngày xưa có người lái buôn")
+    assert not any("Tiếp theo" in p for p in _plain(story.paragraphs))
+
+
+def test_source_fix_table_applies_only_on_its_page():
+    from extractor.errata import apply_page_text_fixes
+    assert apply_page_text_fixes(560, "với chiếc cáng cũ và con đười ươi1.") == (
+        "với chiếc cáng cũ và con đười ươi[^1]."
+    )
+    assert apply_page_text_fixes(559, "con đười ươi1.") == "con đười ươi1."
+
+
+def test_real_story_91_full_size_marker_becomes_footnote(data_pdf):
+    stories = {s.story_number: s for s in StoryDiscoveryEngine.discover_stories(data_pdf, 555, 562)}
+    story = StoryExtractionEngine.extract_single_story(data_pdf, stories[91], ExtractorConfig())
+    text = " ".join(_plain(story.paragraphs) + _plain(story.khao_di))
+    assert "đười ươi[^1]." in text
+    assert "đười ươi1." not in text
