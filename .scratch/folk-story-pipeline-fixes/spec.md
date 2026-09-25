@@ -176,3 +176,13 @@ Story 52's `ORPHAN_MARKER:3` is now a known textbook error. It's listed in `KNOW
 - **Story 91 — BÀ LỚN ĐƯỜI ƯƠI — `ORPHAN_FOOTNOTE:1`.** Page 560's body marker (`…con đười ươi1.`) is typeset at the full 11.7pt size instead of as a small superscript. The engine only treats digits smaller than 10pt as footnote markers, so the text keeps a literal `ươi1.`, and `[^1]` (Trang 560) has no marker.
 
 Both are typesetting quirks in data.pdf. Each can be either allow-listed as a source erratum or fixed in the extractor: (86) accept `N` + capital letter when `N` is the next expected footnote number; (91) accept a full-size digit glued to a word end as a marker when that page has a footnote with that number.
+
+### 2026-09-25 — Review decisions applied; sections I–IV clean
+
+Decisions made in review, now implemented (tests first):
+- **`(Tiếp theo)` is skipped** on the pages where a section heading is repeated at a volume boundary. Story 41 now opens `Ngày xưa có người lái buôn…`; story 176 is handled by the same rule.
+- **Story 86:** a footnote number glued to its text (`2Theo`, page 536) now starts its own footnote. Page 536 gives `[^1]`, `[^2]`, `[^3]`.
+- **Story 91:** handled as an explicit textbook-error fix in `extractor/errata.py`. Page 560's full-size `đười ươi1.` becomes `đười ươi[^1].`.
+- **Footnotes continued over a page break are merged** into one entry `(Trang P-Q)`, which replaces the earlier keep-split-per-page decision. Examples: 175–176 `[^2]`; 240–241 `[^4]`, where the two halves of the couplet are rejoined into one blockquote. A continuation whose footnote starts before the story's range stays a separate entry.
+
+Sections 1–4 regenerated and validated: **0 `REVIEW`**, `rendered_coverage` 1.000 on all 93 stories, 1 known erratum (story 52). Sections 5–10 are next.
