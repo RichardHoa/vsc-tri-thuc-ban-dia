@@ -45,6 +45,28 @@ def test_unterminated_dialogue_line_continues_on_next_page(make_pdf):
     assert _extract(doc).paragraphs == ['- "I will go to the market tomorrow," he said.']
 
 
+def test_unterminated_dialogue_mid_page_stays_its_own_paragraph(make_pdf):
+    # page 378: '... phán: "Tiền của ngươi đây, còn vợ thì phú về"1' ends a
+    # paragraph mid-page without terminal punctuation; the next block is new prose.
+    doc = make_pdf([SyntheticPage([
+        Item(99, 100, "He ruled: - Take your money back"),
+        Item(99, 130, "Another tale tells it differently."),
+    ])])
+    assert _extract(doc).paragraphs == [
+        "He ruled:",
+        "- Take your money back",
+        "Another tale tells it differently.",
+    ]
+
+
+def test_bare_dash_mid_page_joins_next_block(make_pdf):
+    doc = make_pdf([SyntheticPage([
+        Item(99, 100, "He asked: -"),
+        Item(88, 130, '"Buy it?".'),
+    ])])
+    assert _extract(doc).paragraphs == ["He asked:", '- "Buy it?".']
+
+
 def test_unterminated_dialogue_is_not_glued_to_a_new_dialogue_turn(make_pdf):
     doc = make_pdf([
         SyntheticPage([Item(99, 100, '- "Wait,')]),
