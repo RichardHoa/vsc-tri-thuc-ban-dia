@@ -25,6 +25,7 @@ vsc-tri-thuc-ban-dia/
 │   ├── __init__.py                 # Public re-exports for the two CLI entrypoints
 │   ├── models.py
 │   ├── normalizer.py
+│   ├── errata.py
 │   ├── verse.py
 │   ├── geometry.py
 │   ├── toc.py
