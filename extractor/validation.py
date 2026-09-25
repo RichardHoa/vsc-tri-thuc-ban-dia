@@ -70,6 +70,10 @@ KNOWN_SOURCE_ERRATA: Dict[Tuple[int, str], str] = {
         "textbook error: data.pdf page 601 prints footnote 1's number with no "
         "footnote text after it"
     ),
+    (108, "ORPHAN_MARKER:2"): (
+        "textbook error: data.pdf page 657 prints both of its footnotes as '1.', "
+        "so footnote 2's text (Theo Đơ-jor-jơ (Degeorge) ...) is merged into [^1]"
+    ),
     (52, "ORPHAN_MARKER:3"): (
         "textbook error: data.pdf page 357 prints footnote 3's number as '1', "
         "so its text (Theo Tạp chí chúng tôi (1910)) is merged into [^2]"

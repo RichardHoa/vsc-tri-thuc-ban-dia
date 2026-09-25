@@ -263,3 +263,9 @@ def test_parse_markdown_story_keeps_empty_footnote_entry(tmp_path):
     md = "# C\n\n## 97. T\n\na[^1] b[^2].\n\n---\n\n### Chú thích\n\n[^1]: (Trang 601)\n\n[^2]: (Trang 601) Theo A.\n"
     parsed = parse_markdown_story(_write(tmp_path, "s.md", md))
     assert parsed["footnote_entries"] == [(1, 601, ""), (2, 601, "Theo A.")]
+
+
+def test_story_108_orphan_marker_2_is_a_known_erratum():
+    # page 657 prints both of its footnotes as "1." (body markers are 1 and 2)
+    remaining, errata = apply_source_errata(108, ["ORPHAN_MARKER:2"])
+    assert remaining == [] and errata[0].startswith("ORPHAN_MARKER:2")
