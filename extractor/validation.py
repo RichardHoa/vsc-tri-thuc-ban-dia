@@ -136,7 +136,16 @@ def normalize_for_diff(text: str) -> str:
 
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+")
 _HRULE_RE = re.compile(r"^\s*-{3,}\s*$")
-_FOOTNOTE_DEF_RE = re.compile(r"^\[\^(\d+)\]:\s*(?:\(Trang\s*(\d+)\)\s*)?")
+#: ``[^N]: (Trang P)`` or, for a footnote merged over a page break, ``(Trang P-Q)``.
+_FOOTNOTE_DEF_RE = re.compile(r"^\[\^(\d+)\]:\s*(?:\(Trang\s*(\d+)(?:\s*[-–]\s*(\d+))?\)\s*)?")
+
+
+def _def_pages(match: "re.Match") -> Tuple[int, int]:
+    """``(start, end)`` pages of a footnote definition (``(-1, -1)`` if missing)."""
+    if not match.group(2):
+        return (-1, -1)
+    start = int(match.group(2))
+    return (start, int(match.group(3)) if match.group(3) else start)
 _INLINE_MARKER_RE = re.compile(r"\[\^(\d+)\]")
 #: Blockquote marker of a rendered verse line (``> Cô hố cô hố.``).
 _BLOCKQUOTE_RE = re.compile(r"^\s{0,3}>\s?")
@@ -203,12 +212,13 @@ def score_alignment(raw: str, rendered: str) -> Tuple[float, float]:
     return (min(rendered_coverage, 1.0), min(raw_coverage, 1.0))
 
 
-def split_rendered_segments(md: str) -> Tuple[str, List[Tuple[int, str]]]:
-    """Split rendered Markdown into ``(body_text, [(page, footnote_text), ...])``.
+def split_rendered_segments(md: str) -> Tuple[str, List[Tuple[int, int, str]]]:
+    """Split rendered Markdown into ``(body_text, [(page, end_page, footnote_text), ...])``.
 
     ``body_text`` is what :func:`strip_markdown_scaffolding` keeps **minus** the
     footnote-definition lines; those are returned separately, each carrying the
-    page from its own ``(Trang P)`` prefix (``-1`` when missing/unparsable).
+    pages from its own ``(Trang P)`` / ``(Trang P-Q)`` prefix (``-1`` when
+    missing/unparsable).
     A footnote's indented continuation lines (verse rendered inside a footnote)
     belong to that footnote. Verse ``> `` markers are stripped, text kept.
     """
@@ -219,7 +229,7 @@ def split_rendered_segments(md: str) -> Tuple[str, List[Tuple[int, str]]]:
         if in_footnote and (not line.strip() or _FOOTNOTE_CONT_RE.match(line)):
             text = _INLINE_MARKER_RE.sub("", _unquote(line.strip()))
             if text.strip():
-                fn_entries[-1][1] = f"{fn_entries[-1][1]}\n{text}".strip()
+                fn_entries[-1][2] = f"{fn_entries[-1][2]}\n{text}".strip()
             continue
         in_footnote = False
         if _HRULE_RE.match(line):
@@ -229,15 +239,15 @@ def split_rendered_segments(md: str) -> Tuple[str, List[Tuple[int, str]]]:
         stripped = line.strip()
         match = _FOOTNOTE_DEF_RE.match(stripped)
         if match:
-            page = int(match.group(2)) if match.group(2) else -1
+            page, last = _def_pages(match)
             text = _INLINE_MARKER_RE.sub("", _FOOTNOTE_DEF_RE.sub("", stripped))
-            fn_entries.append([page, text])
+            fn_entries.append([page, last, text])
             in_footnote = True
             continue
         line = _INLINE_MARKER_RE.sub("", _unquote(stripped))
         if line.strip():
             body_lines.append(line)
-    return "\n".join(body_lines), [(page, text) for page, text in fn_entries if text.strip()]
+    return "\n".join(body_lines), [(p, e, text) for p, e, text in fn_entries if text.strip()]
 
 
 def score_matched(raw: str, rendered: str) -> Tuple[int, int]:
@@ -260,7 +270,7 @@ def score_segments(
     start_page: int,
     end_page: int,
     body: str,
-    fn_entries: List[Tuple[int, str]],
+    fn_entries: List[Tuple[int, int, str]],
     rendered_full: str,
 ) -> Tuple[float, float]:
     """Return ``(rendered_coverage, raw_coverage)`` using segment-aware scoring.
@@ -289,14 +299,14 @@ def score_segments(
         total_len += length
     del body_norm
 
-    for page, text in fn_entries:
+    for page, last, text in fn_entries:
         fn_norm = normalize_for_diff(text)
         if not fn_norm:
             continue
-        if page == -1 or page < start_page or page > end_page:
+        if page == -1 or page < start_page or last > end_page:
             matched, length = score_matched(full_raw, fn_norm)
         else:
-            window = extract_raw_page_text(doc, page, page)
+            window = extract_raw_page_text(doc, page, last)
             matched, length = score_matched(window, fn_norm)
             del window
         total_matched += matched
@@ -330,6 +340,7 @@ def parse_markdown_story(path: str) -> Dict[str, Any]:
         "body": "",
         "footnotes": [],
         "footnote_entries": [],
+        "footnote_ranges": [],
         "khao_di_present": False,
         "read_error": "",
     }
@@ -366,9 +377,10 @@ def parse_markdown_story(path: str) -> Dict[str, Any]:
             continue
         match = _FOOTNOTE_DEF_RE.match(stripped)
         if match:
-            page = int(match.group(2)) if match.group(2) else -1
+            page, last = _def_pages(match)
             num = int(match.group(1))
             parsed["footnotes"].append((num, page))
+            parsed["footnote_ranges"].append((num, page, last))
             parsed["footnote_entries"].append(
                 (num, page, _INLINE_MARKER_RE.sub("", _FOOTNOTE_DEF_RE.sub("", stripped)))
             )
@@ -420,12 +432,17 @@ def check_structure(md_parsed: Dict[str, Any], toc_entry: Dict[str, Any]) -> Tup
     # A number's pages must stay inside the story and in page order; with
     # per-page renumbering a skipped page is fine, going backwards is not.
     start, end = toc_entry.get("start_page"), toc_entry.get("end_page")
+    ranges = md_parsed.get("footnote_ranges") or [(n, p, p) for n, p in footnotes]
     pages_by_num: Dict[int, List[int]] = {}
-    for num, page in footnotes:
+    for num, page, _ in ranges:
         pages_by_num.setdefault(num, []).append(page)
+    last_by_num: Dict[int, List[int]] = {}
+    for num, _, last in ranges:
+        last_by_num.setdefault(num, []).append(last)
     for num, pages in sorted(pages_by_num.items()):
         out_of_range = start is not None and end is not None and any(
-            p != -1 and not (int(start) <= p <= int(end)) for p in pages
+            p != -1 and not (int(start) <= p <= int(end))
+            for p in pages + last_by_num[num]
         )
         if out_of_range or pages != sorted(pages):
             flags.append(f"FOOTNOTE_GAP:{num}")
@@ -454,7 +471,7 @@ def check_structure(md_parsed: Dict[str, Any], toc_entry: Dict[str, Any]) -> Tup
 
 
 def check_footnote_chains(
-    footnotes: List[Tuple[int, int]],
+    footnotes: List[Tuple[int, ...]],
     chains: List[FootnoteChain],
     start_page: int,
     end_page: int,
@@ -464,14 +481,20 @@ def check_footnote_chains(
 
     ``chains`` come from the raw PDF footer (:meth:`EdgeCaseSurvey.find_footnote_chains`):
     footnote ``N`` spread over consecutive pages. Every chain page inside the
-    story must carry an ``[^N]: (Trang P)`` entry — a continuation that was
-    dropped or lost its number (rendered as some other ``[^M]``) breaks the chain.
+    story must be covered by an ``[^N]`` entry — ``(Trang P-Q)`` when merged,
+    or ``(Trang P)`` — a continuation that was dropped or lost its number
+    (rendered as some other ``[^M]``) breaks the chain. ``footnotes`` holds
+    ``(num, page)`` or ``(num, page, end_page)`` tuples.
     """
-    present = set(footnotes)
+    covered = set()
+    for entry in footnotes:
+        num, page = entry[0], entry[1]
+        last = entry[2] if len(entry) > 2 else page
+        covered.update((num, p) for p in range(page, last + 1))
     flags: List[str] = []
     for chain in chains:
         pages = [p for p in chain.pages if start_page <= p <= end_page]
-        if any((chain.num, p) not in present for p in pages):
+        if any((chain.num, p) not in covered for p in pages):
             flag = f"FOOTNOTE_GAP:{chain.num}"
             if flag not in flags:
                 flags.append(flag)
@@ -581,7 +604,7 @@ class ExtractionValidator:
                         doc, start_page, end_page, ExtractorConfig()
                     )
                     for flag in check_footnote_chains(
-                        parsed.get("footnotes", []), chains, start_page, end_page
+                        parsed.get("footnote_ranges", []), chains, start_page, end_page
                     ):
                         if flag not in flags:
                             flags.append(flag)

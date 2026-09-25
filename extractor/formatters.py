@@ -49,7 +49,8 @@ class MarkdownRenderer:
     @staticmethod
     def render_footnote(fn: Footnote) -> str:
         """``[^N]: (Trang P) text``; an entry with verse continues as indented blocks."""
-        prefix = f"[^{fn.orig_num}]: (Trang {fn.page})"
+        pages = f"{fn.page}-{fn.end_page}" if fn.end_page and fn.end_page != fn.page else f"{fn.page}"
+        prefix = f"[^{fn.orig_num}]: (Trang {pages})"
         if not fn.parts:
             return f"{prefix} {fn.text}"
         parts = list(fn.parts)

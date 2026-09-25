@@ -25,8 +25,9 @@ class Footnote:
     ``text`` is always the flat prose of the entry (verse lines joined with
     spaces). ``parts`` is only populated when the entry contains verse: it then
     holds the same content split into prose strings and ``Verse`` blocks.
-    ``continued`` marks the unnumbered head of a page's footnote area that
-    carries on the previous page's last footnote (it inherits that number).
+    A footnote continued over a page break is one entry spanning
+    ``page``–``end_page``. ``continued`` marks a continuation kept on its own
+    because the note it continues lies before the story's page range.
     """
     id: int
     orig_num: int
@@ -34,6 +35,12 @@ class Footnote:
     text: str
     parts: List[Paragraph] = field(default_factory=list)
     continued: bool = False
+    #: Last page of an entry merged across a page break (``page`` when single-page).
+    end_page: Optional[int] = None
+
+    def __post_init__(self):
+        if self.end_page is None:
+            self.end_page = self.page
 
 
 @dataclass

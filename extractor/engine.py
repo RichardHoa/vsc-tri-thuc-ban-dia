@@ -14,6 +14,7 @@ from .geometry import PdfGeometryHelper
 from .footnotes import FootnoteEngine
 from .discovery import StoryDiscoveryEngine
 from .verse import VerseDetector
+from .errata import apply_page_text_fixes
 
 
 class StoryExtractionEngine:
@@ -85,6 +86,10 @@ class StoryExtractionEngine:
                     return
                 if StoryDiscoveryEngine.clean_story_title(text):
                     return
+
+            # Skip the "(Tiếp theo)" marker under a repeated section heading
+            if TextNormalizer.is_continuation_marker(text):
+                return
 
             # Check for KHẢO DỊ section header
             if text.strip().upper() == 'KHẢO DỊ':
@@ -177,7 +182,9 @@ class StoryExtractionEngine:
                         else:
                             line_text += stext
 
-                    clean_line = TextNormalizer.clean_spaces(line_text)
+                    clean_line = apply_page_text_fixes(
+                        pno + 1, TextNormalizer.clean_spaces(line_text)
+                    )
                     if not clean_line:
                         continue
                     is_verse = bool(l.get('is_verse'))

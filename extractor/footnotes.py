@@ -17,7 +17,11 @@ from .verse import VerseDetector
 class FootnoteEngine:
     """Parses, re-indexes, and formats footnotes."""
 
-    FOOTNOTE_SPLIT_PAT = re.compile(r'(?:^|\s+)(\d+)[\.\s]+(?=[A-ZÀ-Ỵ\"\'“‘\(\[\d])')
+    # "N. Text" / "N Text", or a number glued straight onto a capitalised word
+    # ("2Theo ..." on page 536) — never a number glued to digits (years).
+    FOOTNOTE_SPLIT_PAT = re.compile(
+        r'(?:^|\s+)(\d+)(?:[\.\s]+(?=[A-ZÀ-Ỵ\"\'“‘\(\[\d])|(?=[A-ZÀ-Ỵ]))'
+    )
 
     @classmethod
     def parse_footnote_text(cls, text: str, page_num: int) -> List[Dict[str, any]]:
@@ -46,7 +50,7 @@ class FootnoteEngine:
                 expected_num += 1
 
         if not valid_splits:
-            m0 = re.match(r'^(\d+)[\.\s]+', text)
+            m0 = re.match(r'^(\d+)(?:[\.\s]+|(?=[A-ZÀ-Ỵ]))', text)
             if m0:
                 content = TextNormalizer.clean_spaces(text[m0.end():])
                 return [{'orig_num': int(m0.group(1)), 'page': page_num, 'text': content,
@@ -183,9 +187,11 @@ class FootnoteEngine:
         """
         Scans story pages to extract footnotes and preserves original page-level footnote IDs.
 
-        Footnotes stay split per page (each entry keeps its own page). The
-        unnumbered head of a page's footnote area continues the footnote left
-        open at the bottom of the previous page and inherits its number.
+        The unnumbered head of a page's footnote area continues the footnote left
+        open at the bottom of the previous page: it is merged into that entry,
+        which then spans both pages (``page``–``end_page``). When that footnote
+        lies before ``start_page`` the continuation is kept as its own entry
+        (``continued=True``) carrying the inherited number.
         """
         page_footnotes: Dict[int, List[Footnote]] = {}
         all_footnotes: List[Footnote] = []
@@ -203,6 +209,11 @@ class FootnoteEngine:
             for entry, parts in zip(entries, verse_parts):
                 continued = entry['continued'] and prev_open_num is not None
                 num = prev_open_num if continued else entry['orig_num']
+                last = all_footnotes[-1] if all_footnotes else None
+                if (continued and last is not None and last.orig_num == num
+                        and last.end_page == page_num - 1):
+                    cls.merge_continuation(last, entry['text'], parts, page_num)
+                    continue
                 fn_item = Footnote(
                     id=num,
                     orig_num=num,
@@ -213,6 +224,26 @@ class FootnoteEngine:
                 )
                 page_footnotes[page_num].append(fn_item)
                 all_footnotes.append(fn_item)
-            prev_open_num = page_footnotes[page_num][-1].orig_num
+            prev_open_num = all_footnotes[-1].orig_num
 
         return page_footnotes, all_footnotes
+
+    @staticmethod
+    def merge_continuation(fn: Footnote, text: str, parts: List[Paragraph], page_num: int) -> None:
+        """Append a footnote's continuation from ``page_num`` onto ``fn`` in place.
+
+        The entry then spans ``fn.page``–``page_num``; prose joins with a space and
+        verse split by the page break is rejoined into one ``Verse`` block.
+        """
+        if fn.parts or parts:
+            merged: List[Paragraph] = list(fn.parts or [fn.text])
+            for part in parts or [text]:
+                if merged and isinstance(part, Verse) and isinstance(merged[-1], Verse):
+                    merged[-1] = Verse(merged[-1].lines + part.lines)
+                elif merged and isinstance(part, str) and isinstance(merged[-1], str):
+                    merged[-1] = f"{merged[-1]} {part}".strip()
+                else:
+                    merged.append(part)
+            fn.parts = merged
+        fn.text = f"{fn.text} {text}".strip()
+        fn.end_page = page_num
