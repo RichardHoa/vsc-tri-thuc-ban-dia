@@ -60,6 +60,18 @@ MIN_CHARS_PER_PAGE = 800
 
 DEFAULT_THRESHOLD = 0.90
 
+#: Structural flags caused by an error printed in the textbook itself, keyed by
+#: ``(story_number, flag)``. Story numbers are unique book-wide. A listed flag
+#: is moved out of ``structural_flags`` into ``source_errata``: the story gets
+#: status ``ERRATUM`` (reported separately, not ``REVIEW``). Only add an entry
+#: after checking data.pdf confirms the source, not the extractor, is at fault.
+KNOWN_SOURCE_ERRATA: Dict[Tuple[int, str], str] = {
+    (52, "ORPHAN_MARKER:3"): (
+        "textbook error: data.pdf page 357 prints footnote 3's number as '1', "
+        "so its text (Theo Tạp chí chúng tôi (1910)) is merged into [^2]"
+    ),
+}
+
 
 # ---------------------------------------------------------------------------
 # Section A — core
@@ -81,13 +93,31 @@ class StoryValidationResult:
     structural_flags: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
     threshold: float = DEFAULT_THRESHOLD
+    #: Allow-listed flags (``FLAG — reason``) from :data:`KNOWN_SOURCE_ERRATA`.
+    source_errata: List[str] = field(default_factory=list)
 
     @property
     def status(self) -> str:
-        """``REVIEW`` when below threshold or structurally flagged, else ``OK``."""
+        """``REVIEW`` when below threshold or structurally flagged; ``ERRATUM``
+        when the only issues are known textbook errors; else ``OK``."""
         if self.rendered_coverage < self.threshold or self.structural_flags:
             return "REVIEW"
+        if self.source_errata:
+            return "ERRATUM"
         return "OK"
+
+
+def apply_source_errata(story_number: int, flags: List[str]) -> Tuple[List[str], List[str]]:
+    """Split ``flags`` into ``(remaining_flags, errata)`` using :data:`KNOWN_SOURCE_ERRATA`."""
+    remaining: List[str] = []
+    errata: List[str] = []
+    for flag in flags:
+        reason = KNOWN_SOURCE_ERRATA.get((story_number, flag))
+        if reason is None:
+            remaining.append(flag)
+        else:
+            errata.append(f"{flag} — {reason}")
+    return remaining, errata
 
 
 def normalize_for_diff(text: str) -> str:
@@ -564,6 +594,7 @@ class ExtractionValidator:
 
                 if char_per_page < MIN_CHARS_PER_PAGE:
                     flags.append("LOW_DENSITY")
+                flags, errata = apply_source_errata(number, flags)
 
                 if doc is not None and rendered:
                     body_seg, fn_segs = split_rendered_segments(
@@ -589,6 +620,7 @@ class ExtractionValidator:
                         structural_flags=flags,
                         notes=notes,
                         threshold=threshold,
+                        source_errata=errata,
                     )
                 )
                 del parsed, rendered
@@ -617,6 +649,7 @@ class ValidationReporter:
         ordered = cls._sorted(results)
         review = [r for r in ordered if r.status == "REVIEW"]
         flagged = [r for r in ordered if r.structural_flags]
+        errata = [r for r in ordered if r.source_errata]
 
         lines: List[str] = []
         lines.append("# Extraction Validation Report")
@@ -625,6 +658,7 @@ class ValidationReporter:
         lines.append(f"- Threshold (rendered_coverage): **{threshold:.2f}**")
         lines.append(f"- Needing review: **{len(review)}**")
         lines.append(f"- With structural flags: **{len(flagged)}**")
+        lines.append(f"- Known source errata: **{len(errata)}**")
         lines.append("")
         lines.append(
             "`rendered_coverage` = fraction of the rendered Markdown prose found in the raw PDF "
@@ -647,7 +681,8 @@ class ValidationReporter:
         lines.append("| # | Story | Pages | rendered_cov | raw_cov (info) | chars/page | Status | Flags |")
         lines.append("|---|---|---|---|---|---|---|---|")
         for r in ordered:
-            flags = ", ".join(r.structural_flags) if r.structural_flags else "-"
+            shown = r.structural_flags + [f"ERRATUM: {e.split(' — ')[0]}" for e in r.source_errata]
+            flags = ", ".join(shown) if shown else "-"
             lines.append(
                 f"| {r.story_number} | {r.title} | {r.start_page}-{r.end_page} | "
                 f"{r.rendered_coverage:.3f} | {r.raw_coverage:.3f} | {r.char_per_page:.0f} | "
@@ -662,6 +697,23 @@ class ValidationReporter:
                 lines.append(f"### Story {r.story_number} — {r.title} (`{r.markdown_file}`)")
                 for flag in r.structural_flags:
                     lines.append(f"- FLAG: {flag}")
+                lines.append("")
+        else:
+            lines.append("- None.")
+        lines.append("")
+
+        lines.append("## Known Source Errata")
+        lines.append("")
+        lines.append(
+            "Flags caused by an error printed in the textbook itself (allow-listed in "
+            "`KNOWN_SOURCE_ERRATA`); these stories are not counted as needing review."
+        )
+        lines.append("")
+        if errata:
+            for r in errata:
+                lines.append(f"### Story {r.story_number} — {r.title} (`{r.markdown_file}`)")
+                for entry in r.source_errata:
+                    lines.append(f"- ERRATUM: {entry}")
                 lines.append("")
         else:
             lines.append("- None.")
@@ -690,7 +742,8 @@ class ValidationReporter:
         lines: List[str] = []
         lines.append(
             f"Validated {len(results)} stories — {len(review)} need review, "
-            f"{len([r for r in ordered if r.structural_flags])} with structural flags."
+            f"{len([r for r in ordered if r.structural_flags])} with structural flags, "
+            f"{len([r for r in ordered if r.source_errata])} known source errata."
         )
         for flag in section_flags:
             lines.append(f"  [section] {flag}")
@@ -701,7 +754,8 @@ class ValidationReporter:
         lines.append(f"Worst {min(top_n, len(ordered))} by rendered_coverage:")
         lines.append(f"  {'#':>4}  {'rend':>6}  {'raw*':>6}  {'c/pg':>6}  status  title / flags")
         for r in ordered[:top_n]:
-            flags = (" | " + ", ".join(r.structural_flags)) if r.structural_flags else ""
+            shown = r.structural_flags + [f"ERRATUM: {e.split(' — ')[0]}" for e in r.source_errata]
+            flags = (" | " + ", ".join(shown)) if shown else ""
             lines.append(
                 f"  {r.story_number:>4}  {r.rendered_coverage:>6.3f}  {r.raw_coverage:>6.3f}  "
                 f"{r.char_per_page:>6.0f}  {r.status:<6}  {r.title}{flags}"

@@ -164,3 +164,60 @@ def test_validate_section_flags_lost_continuation(tmp_path, data_pdf):
     _write(tmp_path, "story_001.md", md)
     results, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
     assert "FOOTNOTE_GAP:2" in results[0].structural_flags
+
+
+# --- known source errata (textbook errors, allow-listed) --------------------
+
+from extractor.validation import (  # noqa: E402
+    KNOWN_SOURCE_ERRATA,
+    StoryValidationResult,
+    ValidationReporter,
+    apply_source_errata,
+)
+
+
+def test_story_52_orphan_marker_3_is_a_known_erratum():
+    assert (52, "ORPHAN_MARKER:3") in KNOWN_SOURCE_ERRATA
+
+
+def test_apply_source_errata_moves_only_listed_flags():
+    remaining, errata = apply_source_errata(52, ["ORPHAN_MARKER:3", "LOW_DENSITY"])
+    assert remaining == ["LOW_DENSITY"]
+    assert len(errata) == 1 and errata[0].startswith("ORPHAN_MARKER:3")
+    # same flag on another story is still a real failure
+    assert apply_source_errata(51, ["ORPHAN_MARKER:3"]) == (["ORPHAN_MARKER:3"], [])
+
+
+def _result(**kw):
+    base = dict(story_number=52, title="T", markdown_file="story_052.md", start_page=356,
+                end_page=359, rendered_coverage=1.0, raw_coverage=1.0, char_per_page=2000.0)
+    base.update(kw)
+    return StoryValidationResult(**base)
+
+
+def test_status_erratum_is_not_review():
+    assert _result(source_errata=["ORPHAN_MARKER:3 — typo"]).status == "ERRATUM"
+    assert _result(source_errata=["x"], structural_flags=["LOW_DENSITY"]).status == "REVIEW"
+    assert _result(source_errata=["x"], rendered_coverage=0.5).status == "REVIEW"
+    assert _result().status == "OK"
+
+
+def test_report_lists_errata_separately():
+    md = ValidationReporter.render_markdown([_result(source_errata=["ORPHAN_MARKER:3 — typo"])], [])
+    assert "Needing review: **0**" in md
+    assert "Known source errata: **1**" in md
+    assert "## Known Source Errata" in md
+    assert "ORPHAN_MARKER:3 — typo" in md
+    assert "| ERRATUM |" in md
+
+
+def test_validate_section_story_52_is_erratum(tmp_path, data_pdf):
+    toc = {"sections": [{"stories": [{
+        "story_number": 52, "title": "T", "start_page": 357, "end_page": 357,
+        "markdown_file": "story_052.md", "footnote_count": None,
+    }]}]}
+    _write(tmp_path, "table_of_contents.json", json.dumps(toc))
+    _write(tmp_path, "story_052.md", "# C\n\n## 52. T\n\nx[^3].\n")
+    results, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
+    assert "ORPHAN_MARKER:3" not in results[0].structural_flags
+    assert results[0].source_errata and results[0].source_errata[0].startswith("ORPHAN_MARKER:3")
