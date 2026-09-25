@@ -142,13 +142,13 @@ If all 10 sections extract clean, the final state should have `extracted_stories
 
 ## Definition of done
 
-- [ ] Phase 0 survey tool committed, edge-case catalog written to `.scratch/folk-story-pipeline-fixes/edge-case-catalog.md`
-- [ ] Dialogue page-boundary bug fixed in the pipeline (not hand-patched in one file), verified against story 41 and every other instance the survey found
-- [ ] Poems render as blockquotes, verified against page 102 and every other instance the survey found, including verse inside footnotes
-- [ ] Validator extended with footnote-chain-completeness and bare-dash-paragraph checks, at existing `REVIEW` severity, and taught to diff blockquote lines correctly
-- [ ] Sections I-III regenerated and re-validated clean
-- [ ] Sections IV-X extracted and validated one at a time, in order, with a stop-and-report on the first `REVIEW` flag in any section
-- [ ] `docs/ai-context/progress.md` updated per this repo's `/update-docs` convention once the above is complete (CLAUDE.md §5: fold shipped work into `spec.md`/`progress.md`, present tense, no changelog narrative)
+- [x] Phase 0 survey tool committed, edge-case catalog written to `.scratch/folk-story-pipeline-fixes/edge-case-catalog.md`
+- [x] Dialogue page-boundary bug fixed in the pipeline (not hand-patched in one file), verified against story 41 and every other instance the survey found
+- [x] Poems render as blockquotes, verified against page 102 and every other instance the survey found, including verse inside footnotes
+- [x] Validator extended with footnote-chain-completeness and bare-dash-paragraph checks, at existing `REVIEW` severity, and taught to diff blockquote lines correctly
+- [x] Sections I-III regenerated and re-validated clean
+- [x] Sections IV-X extracted and validated one at a time, in order, with a stop-and-report on the first `REVIEW` flag in any section
+- [x] `docs/ai-context/progress.md` updated per this repo's `/update-docs` convention once the above is complete (CLAUDE.md §5: fold shipped work into `spec.md`/`progress.md`, present tense, no changelog narrative)
 
 ## Comments
 
@@ -186,3 +186,12 @@ Decisions made in review, now implemented (tests first):
 - **Footnotes continued over a page break are merged** into one entry `(Trang P-Q)`, which replaces the earlier keep-split-per-page decision. Examples: 175–176 `[^2]`; 240–241 `[^4]`, where the two halves of the couplet are rejoined into one blockquote. A continuation whose footnote starts before the story's range stays a separate entry.
 
 Sections 1–4 regenerated and validated: **0 `REVIEW`**, `rendered_coverage` 1.000 on all 93 stories, 1 known erratum (story 52). Sections 5–10 are next.
+
+### 2026-09-25 — Phase 3 complete: sections I–X extracted and validated clean
+
+Sections 5–10 hit two more kinds of textbook quirk. They were handled under the policy set in review: accept as a footnote where the extractor can read it, and allow-list real textbook errors.
+- **Story 97** (page 601): footnote 1 is printed with no text. The empty footnote no longer swallows `2`, and the new `EMPTY_FOOTNOTE:N` check flags it. It's allow-listed as an erratum. The same parser fix also recovered a hidden `[^2]` on page 270, story 39.
+- **Stories 99, 100** (pages 607, 609, 611, 612): the footnote numbers are printed doubled (`33`, `11`) and are now read as 3 and 1.
+- **Story 108** (page 657): both footnotes are printed as `1.`. This is the same kind of error as story 52 and is allow-listed.
+
+Final state: 201 stories in `extracted_stories/{I..X}_*/`, each section with `table_of_contents.json` and `validation_report.md`. There are 0 `REVIEW` stories, 3 `ERRATUM` (52, 97, 108) and no section-level issues. `rendered_coverage` is 1.000 on every story.
