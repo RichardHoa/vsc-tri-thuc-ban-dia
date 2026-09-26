@@ -2,7 +2,7 @@
 
 ## Project Status
 
-The full anthology (PHẦN THỨ HAI, sections I–X, 201 stories) is extracted to `extracted_stories/<ROMAN>_<SLUG>/`, and every section validates with no `REVIEW` stories. `rendered_coverage` is 1.000 on all 201. Three stories carry known textbook errata (status `ERRATUM`): 52, 97 and 108. Dialogue dashes carry across page breaks, verse renders as blockquotes (body and footnotes), and footnotes continued over a page break are merged into one `(Trang P-Q)` entry. pytest suite in `tests/` (91 tests).
+The full anthology (PHẦN THỨ HAI, sections I–X, 201 stories) is extracted to `extracted_stories/<ROMAN>_<SLUG>/`, and every section validates with no `REVIEW` stories. `rendered_coverage` is 1.000 on all 201. Three stories carry known textbook errata (status `ERRATUM`): 52, 97 and 108. Dialogue dashes carry across page breaks, verse renders as blockquotes (body and footnotes), and footnotes continued over a page break are merged into one `(Trang P-Q)` entry. pytest suite in `tests/` (101 tests).
 
 ## Completed
 

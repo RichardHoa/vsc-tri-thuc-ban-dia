@@ -195,3 +195,11 @@ Sections 5–10 hit two more kinds of textbook quirk. They were handled under th
 - **Story 108** (page 657): both footnotes are printed as `1.`. This is the same kind of error as story 52 and is allow-listed.
 
 Final state: 201 stories in `extracted_stories/{I..X}_*/`, each section with `table_of_contents.json` and `validation_report.md`. There are 0 `REVIEW` stories, 3 `ERRATUM` (52, 97, 108) and no section-level issues. `rendered_coverage` is 1.000 on every story.
+
+### 2026-09-26 — Page-by-page footnote audit follow-up
+
+A full-book audit, comparing body superscript markers against the numbers printed in each page's footnote area, turned up two more extractor gaps. Both are fixed with tests first:
+- **Superscript marker typeset with its punctuation** (`"1. "` as one run): pages 306 (story 41), 1067 and 1072 (story 164), and 1106 (story 167). The digit used to leak into the text (`nhà1.`); it is now `nhà[^1].`.
+- **Numbered list inside a footnote**, page 1203 (story 182): `(1. Người chồng hóa nai; 2. Trộm áo nàng tiên)` was split into a false footnote 2. A number inside a parenthesis that closes after it no longer starts a footnote. Page 138 has a parenthesis the book never closes, and its footnote 2 still splits.
+
+Re-extracting the whole book changed exactly those five spots. Sections III, VIII and IX re-validate clean, and I–X remain 0 `REVIEW`.
