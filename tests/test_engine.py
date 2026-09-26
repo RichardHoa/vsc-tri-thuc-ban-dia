@@ -221,3 +221,31 @@ def test_real_story_91_full_size_marker_becomes_footnote(data_pdf):
     text = " ".join(_plain(story.paragraphs) + _plain(story.khao_di))
     assert "đười ươi[^1]." in text
     assert "đười ươi1." not in text
+
+
+# --- superscript marker sharing a text run with punctuation ---------------
+
+
+def test_superscript_marker_text():
+    m = StoryExtractionEngine.superscript_marker
+    assert m("1") == "[^1]"
+    assert m("1. ") == "[^1]. "   # pages 306, 1067, 1106: "1. " is one run
+    assert m("2.") == "[^2]."     # page 1072
+    assert m(" 3,") == " [^3],"
+    assert m("a") is None
+    assert m("1a") is None
+    assert m("") is None
+
+
+@pytest.mark.parametrize("section_range,number,expected", [
+    ((255, 414), 41, "về nhà[^1]."),
+    ((901, 1122), 164, "trần gian[^2]."),
+    ((901, 1122), 164, "đánh chết[^2]."),
+    ((901, 1122), 167, "rắn Cuống[^1]."),
+])
+def test_real_small_marker_with_punctuation_becomes_footnote(data_pdf, section_range, number, expected):
+    stories = {s.story_number: s for s in StoryDiscoveryEngine.discover_stories(data_pdf, *section_range)}
+    story = StoryExtractionEngine.extract_single_story(data_pdf, stories[number], ExtractorConfig())
+    text = " ".join(_plain(story.paragraphs) + _plain(story.khao_di))
+    assert expected in text
+    assert expected.replace("[^", "").replace("]", "") not in text

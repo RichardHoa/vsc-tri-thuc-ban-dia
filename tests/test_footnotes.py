@@ -145,3 +145,23 @@ def test_real_pages_601_607_609(data_pdf):
     assert [f.orig_num for f in n607] == [1, 2, 3]
     _, n609 = FootnoteEngine.collect_story_footnotes(data_pdf, 609, 609, cfg)
     assert [f.orig_num for f in n609] == [1]
+
+
+def test_parse_number_inside_parentheses_is_not_a_new_footnote():
+    # page 1203: footnote 1 says "(1. Người chồng hóa nai; 2. Trộm áo nàng tiên)"
+    text = ("1 Theo Nàng Át Kao. Trong Truyện cổ Dao thì người kể chia làm hai truyện "
+            "(1. Người chồng hóa nai; 2. Trộm áo nàng tiên) tuy có nhiều tình tiết mới.")
+    entries = FootnoteEngine.parse_footnote_text(text, 1203)
+    assert len(entries) == 1
+    assert entries[0]["text"].endswith("tuy có nhiều tình tiết mới.")
+
+
+def test_parse_after_closed_parentheses_still_splits():
+    entries = FootnoteEngine.parse_footnote_text("1 Theo A (1924). 2 Theo B.", 5)
+    assert [e["orig_num"] for e in entries] == [1, 2]
+
+
+def test_real_page_1203_single_footnote(data_pdf):
+    _, notes = FootnoteEngine.collect_story_footnotes(data_pdf, 1203, 1203, ExtractorConfig())
+    assert [f.orig_num for f in notes] == [1]
+    assert "2. Trộm áo nàng tiên" in notes[0].text
