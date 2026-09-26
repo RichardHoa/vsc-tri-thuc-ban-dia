@@ -20,6 +20,21 @@ from .errata import apply_page_text_fixes
 class StoryExtractionEngine:
     """Extracts body text, dialogues, verse, KHẢO DỊ section, and footnotes for a story."""
 
+    _SUPERSCRIPT_RUN = re.compile(r'^(\s*)(\d+)([.,;:!?)"”’]*\s*)$')
+
+    @classmethod
+    def superscript_marker(cls, text: str) -> Optional[str]:
+        """``[^N]`` for a superscript-size text run holding a footnote number.
+
+        The run may carry the punctuation typeset with it ("1. " on pages 306,
+        1067, 1106; "2." on 1072), which is kept after the marker. ``None`` when
+        the run isn't a footnote number.
+        """
+        m = cls._SUPERSCRIPT_RUN.match(text)
+        if not m:
+            return None
+        return f"{m.group(1)}[^{m.group(2)}]{m.group(3)}"
+
     @staticmethod
     def extract_single_story(
         doc: fitz.Document,
@@ -175,12 +190,12 @@ class StoryExtractionEngine:
                         stext = TextNormalizer.normalize_encoding(s['text'])
 
                         # Footnote superscript detection
-                        if (s['size'] < config.superscript_max_font_size
-                                and stext.strip().isdigit() and line_y0 < body_max_y):
-                            fn_num = stext.strip()
-                            line_text += f"[^{fn_num}]"
-                        else:
-                            line_text += stext
+                        marker = (
+                            StoryExtractionEngine.superscript_marker(stext)
+                            if s['size'] < config.superscript_max_font_size and line_y0 < body_max_y
+                            else None
+                        )
+                        line_text += marker if marker is not None else stext
 
                     clean_line = apply_page_text_fixes(
                         pno + 1, TextNormalizer.clean_spaces(line_text)

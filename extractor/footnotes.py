@@ -47,6 +47,14 @@ class FootnoteEngine:
 
         for match in cls.FOOTNOTE_SPLIT_PAT.finditer(text):
             digits = match.group(1)
+            # A number inside a parenthesis is an in-text list item, not a new
+            # footnote ("(1. Người chồng hóa nai; 2. Trộm áo ...)", page 1203).
+            # Only when the parenthesis really closes after it: page 138 opens
+            # one the book never closes, and the next footnote must still split.
+            before, after = text[:match.start(1)], text[match.end():]
+            if (before.count('(') > before.count(')')
+                    and after.count(')') > after.count('(')):
+                continue
             # The PDF sometimes prints a footnote number doubled ("33" for 3,
             # "11" for 1 — pages 607, 609-612); the body marker is the single one.
             if int(digits) == expected_num or digits == str(expected_num) * 2:

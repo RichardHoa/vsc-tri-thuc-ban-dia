@@ -165,3 +165,16 @@ def test_real_page_1203_single_footnote(data_pdf):
     _, notes = FootnoteEngine.collect_story_footnotes(data_pdf, 1203, 1203, ExtractorConfig())
     assert [f.orig_num for f in notes] == [1]
     assert "2. Trộm áo nàng tiên" in notes[0].text
+
+
+def test_parse_unclosed_parenthesis_does_not_hide_next_footnote():
+    # page 138: footnote 1 opens "(Truyện Y Ười Y Ót, ..." and the book never
+    # closes it; footnote 2 must still be split off.
+    text = "1 Có người kể. (Truyện Y Ười Y Ót, xem Đơ-jor-jơ (Degeorge) (1921 - 22). 2 Theo Truyện cổ, tập IV."
+    entries = FootnoteEngine.parse_footnote_text(text, 138)
+    assert [e["orig_num"] for e in entries] == [1, 2]
+
+
+def test_real_page_138_two_footnotes(data_pdf):
+    _, notes = FootnoteEngine.collect_story_footnotes(data_pdf, 138, 138, ExtractorConfig())
+    assert [f.orig_num for f in notes] == [1, 2]
