@@ -49,7 +49,7 @@ class FolkStoryPipeline:
                 f"Discovering stories between page {self.config.start_page} and {self.config.end_page}..."
             )
             stories = StoryDiscoveryEngine.discover_stories(
-                doc, self.config.start_page, self.config.end_page
+                doc, self.config.start_page, self.config.end_page, self.config
             )
 
             if self.config.story_number is not None:

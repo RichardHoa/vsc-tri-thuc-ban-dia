@@ -14,6 +14,44 @@ from .normalizer import TextNormalizer
 from .geometry import PdfGeometryHelper
 from .toc import PartRange, TableOfContentsParser
 
+_MARKER_PAT = re.compile(r'\s*(\[\^\d+\])')
+
+
+def insert_heading_markers(title: str, marked: str) -> str:
+    """``title`` with the footnote markers of the printed heading ``marked``.
+
+    ``marked`` is the heading as printed, superscripts already turned into
+    ``[^N]`` (and still carrying its ``13. `` / ``III. `` prefix). Each marker
+    is placed after the same letter it follows in print, counted from the end
+    of the heading, and attached to that word. When the two disagree on that
+    tail of text, the clean ``title`` is returned unchanged.
+    """
+    markers: List[Tuple[int, str]] = []  # (non-space chars after the marker, marker)
+    plain_parts: List[str] = []
+    pos = 0
+    for m in _MARKER_PAT.finditer(marked):
+        plain_parts.append(marked[pos:m.start()])
+        pos = m.end()
+        markers.append((len(re.sub(r'\s', '', _MARKER_PAT.sub('', marked[pos:]))), m.group(1)))
+    if not markers:
+        return title
+    plain_parts.append(marked[pos:])
+    printed = re.sub(r'\s', '', ''.join(plain_parts))
+    clean = re.sub(r'\s', '', title)
+
+    # Indices of the title's non-space chars; a marker followed by ``after``
+    # of them goes right after the char before those.
+    letters = [i for i, c in enumerate(title) if not c.isspace()]
+    inserts: List[Tuple[int, int, str]] = []
+    for after, marker in markers:
+        if after >= len(clean) or clean[len(clean) - after:] != printed[len(printed) - after:]:
+            return title
+        inserts.append((letters[len(letters) - after - 1] + 1, len(inserts), marker))
+    out = title
+    for idx, _, marker in sorted(inserts, reverse=True):
+        out = out[:idx] + marker + out[idx:]
+    return out
+
 
 class StoryDiscoveryEngine:
     """Discovers Roman numeral category headers and story boundaries across the PDF."""
@@ -58,6 +96,24 @@ class StoryDiscoveryEngine:
             return story_num, title_clean
         return None
 
+    @staticmethod
+    def marked_heading(title: str, block: Dict, config: ExtractorConfig) -> Optional[str]:
+        """``title`` with the footnote markers printed in its heading ``block``,
+        or ``None`` when the heading carries none."""
+        lines = []
+        for l in block['lines']:
+            text = ''
+            for s in l['spans']:
+                marker = (TextNormalizer.superscript_marker(s['text'])
+                          if s['size'] < config.superscript_max_font_size else None)
+                text += marker if marker is not None else s['text']
+            lines.append(text.strip())
+        marked = TextNormalizer.clean_spaces(' '.join(lines))
+        if not _MARKER_PAT.search(marked):
+            return None
+        heading = insert_heading_markers(title, marked)
+        return heading if heading != title else None
+
     @classmethod
     def find_active_category_before(cls, doc: fitz.Document, start_page: int) -> str:
         """
@@ -86,13 +142,17 @@ class StoryDiscoveryEngine:
         cls,
         doc: fitz.Document,
         start_page: int,
-        end_page: int
+        end_page: int,
+        config: Optional[ExtractorConfig] = None,
     ) -> List[StoryDefinition]:
         """
         Scans pages to discover Roman category headers and story titles,
         calculating precise boundary page ranges for each story.
         """
+        config = config or ExtractorConfig()
         current_category = cls.find_active_category_before(doc, start_page)
+        # (page, marked heading) of a Section heading carrying a footnote marker.
+        category_heading: Optional[Tuple[int, str]] = None
         story_definitions: List[StoryDefinition] = []
 
         # Scan extra pages beyond end_page to accurately detect the end boundary of the last story
@@ -119,6 +179,8 @@ class StoryDiscoveryEngine:
                 category_info = cls.clean_category_title(block_text)
                 if category_info:
                     current_category = category_info[1]
+                    marked = cls.marked_heading(category_info[1], b, config)
+                    category_heading = (page_num, marked) if marked else None
                     continue
 
                 story_info = cls.clean_story_title(block_text)
@@ -130,8 +192,13 @@ class StoryDiscoveryEngine:
                         category=current_category,
                         start_page=page_num,
                         end_page=page_num,
-                        start_y0=y0
+                        start_y0=y0,
+                        heading_title=cls.marked_heading(stitle, b, config),
+                        # A Section heading's marker renders in the Story it opens.
+                        category_heading=(category_heading[1] if category_heading
+                                          and category_heading[0] == page_num else None),
                     ))
+                    category_heading = None
 
         # Filter stories that start within the requested range
         selected_stories = [s for s in story_definitions if s.start_page <= end_page]

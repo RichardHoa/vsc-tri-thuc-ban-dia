@@ -227,7 +227,8 @@ def test_real_story_91_full_size_marker_becomes_footnote(data_pdf):
 
 
 def test_superscript_marker_text():
-    m = StoryExtractionEngine.superscript_marker
+    from extractor.normalizer import TextNormalizer
+    m = TextNormalizer.superscript_marker
     assert m("1") == "[^1]"
     assert m("1. ") == "[^1]. "   # pages 306, 1067, 1106: "1. " is one run
     assert m("2.") == "[^2]."     # page 1072

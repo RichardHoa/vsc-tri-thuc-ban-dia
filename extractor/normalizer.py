@@ -5,7 +5,7 @@ Text Normalization & Cleaning for Vietnamese Folk Tales.
 from __future__ import annotations
 
 import re
-from typing import List
+from typing import List, Optional
 
 
 class TextNormalizer:
@@ -25,6 +25,8 @@ class TextNormalizer:
         '\xad': '',   # Soft hyphen
         '\u200b': '', # Zero-width space
     }
+
+    _SUPERSCRIPT_RUN = re.compile(r'^(\s*)(\d+)([.,;:!?)"”’]*\s*)$')
 
     PUNCTUATION_ENDS = re.compile(r'[.!?:;…]["”\']?(\[\^\d+\])?$')
     HYPHENATED_WORD_BREAK = re.compile(r'(\w+)-\s+(\w+)')
@@ -55,6 +57,19 @@ class TextNormalizer:
             text = '- ' + text[1:].lstrip()
 
         return text.strip()
+
+    @classmethod
+    def superscript_marker(cls, text: str) -> Optional[str]:
+        """``[^N]`` for a superscript-size text run holding a footnote number.
+
+        The run may carry the punctuation typeset with it ("1. " on pages 306,
+        1067, 1106; "2." on 1072), which is kept after the marker. ``None`` when
+        the run isn't a footnote number.
+        """
+        m = cls._SUPERSCRIPT_RUN.match(text)
+        if not m:
+            return None
+        return f"{m.group(1)}[^{m.group(2)}]{m.group(3)}"
 
     @classmethod
     def is_all_caps(cls, text: str) -> bool:

@@ -20,21 +20,7 @@ from .errata import apply_page_text_fixes
 class StoryExtractionEngine:
     """Extracts body text, dialogues, verse, KHẢO DỊ section, and footnotes for a story."""
 
-    _SUPERSCRIPT_RUN = re.compile(r'^(\s*)(\d+)([.,;:!?)"”’]*\s*)$')
     _MARKER = re.compile(r'\[\^(\d+)\]')
-
-    @classmethod
-    def superscript_marker(cls, text: str) -> Optional[str]:
-        """``[^N]`` for a superscript-size text run holding a footnote number.
-
-        The run may carry the punctuation typeset with it ("1. " on pages 306,
-        1067, 1106; "2." on 1072), which is kept after the marker. ``None`` when
-        the run isn't a footnote number.
-        """
-        m = cls._SUPERSCRIPT_RUN.match(text)
-        if not m:
-            return None
-        return f"{m.group(1)}[^{m.group(2)}]{m.group(3)}"
 
     @staticmethod
     def extract_single_story(
@@ -205,7 +191,7 @@ class StoryExtractionEngine:
 
                         # Footnote superscript detection
                         marker = (
-                            StoryExtractionEngine.superscript_marker(stext)
+                            TextNormalizer.superscript_marker(stext)
                             if s['size'] < config.superscript_max_font_size and line_y0 < body_max_y
                             else None
                         )
@@ -255,5 +241,7 @@ class StoryExtractionEngine:
             end_page=story_def.end_page,
             paragraphs=paragraphs,
             khao_di=khao_di_paragraphs,
-            footnotes=all_footnotes
+            footnotes=all_footnotes,
+            heading_title=story_def.heading_title,
+            category_heading=story_def.category_heading,
         )

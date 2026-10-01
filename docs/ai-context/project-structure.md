@@ -34,18 +34,16 @@ vsc-tri-thuc-ban-dia/
 │   ├── engine.py
 │   ├── formatters.py
 │   ├── pipeline.py
+│   ├── cli.py
 │   ├── survey.py
 │   └── validation.py
-├── extracted_stories/              # Extraction output, --section mode: <ROMAN>_<SLUG>/ per section (gitignored)
-│   ├── I_NGUON_GOC_SU_VAT/
-│   ├── II_SU_TICH_DAT_NUOC_VIET/
-│   └── III_SU_TICH_CAC_CAU_VI/
-│       ├── story_NNN.md            # One per extracted story
-│       ├── table_of_contents.json
-│       └── validation_report.md    # Written by validate_extraction.py
-├── I_stories/                      # Extraction output for section I (flat --start-page/--end-page run)
-│   ├── story_NNN.md
-│   └── table_of_contents.json
+├── extracted_stories/              # Extraction output (gitignored)
+│   ├── table_of_contents.json      # Root manifest: Part → Section → leaf tree
+│   ├── validation_report.md        # Written by validate_extraction.py (one report, all selected Parts)
+│   ├── PHAN_THU_NHAT/              # Part 1: Sections I–III, essay_NN.md
+│   ├── PHAN_THU_HAI/               # Part 2: introduction.md + Sections I–X
+│   │   └── I_NGUON_GOC_SU_VAT/     # story_NNN.md + table_of_contents.json (Section manifest)
+│   └── PHAN_THU_BA/                # Part 3: introduction.md + Sections IV–V, essay_NN.md
 ├── .scratch/                       # Per-effort working artifacts (plans, edge-case catalog) — not system docs
 ├── docs/
 │   ├── ai-context/                 # This bundle: spec.md, project-structure.md, progress.md, deployment-infrastructure.md
@@ -60,6 +58,5 @@ vsc-tri-thuc-ban-dia/
 
 ## Directory Conventions
 
-- **`extracted_stories/<ROMAN>_<SLUG>/`**: one directory per Roman-numeral section, produced by `extract_folk_stories.py --section`. `<SLUG>` is the section title ASCII-slugged (`SectionRange.folder_name` in `extractor/toc.py`). Each holds `story_NNN.md` (one per story), `table_of_contents.json`, and — once validated — `validation_report.md`.
-- **`I_stories/`**: an older/alternate output produced with `--start-page`/`--end-page` directly rather than `--section`, so it sits at repo root instead of under `extracted_stories/`. Same internal file shape as a section directory.
+- **`extracted_stories/<PART>/<ROMAN>_<SLUG>/`**: one directory per Section, under its Part folder (`PHAN_THU_NHAT|HAI|BA`). `<SLUG>` is the section title ASCII-slugged (`SectionRange.folder_name` in `extractor/toc.py`). Each holds `story_NNN.md` or `essay_NN.md` plus the Section's `table_of_contents.json`.
 - **`process/`**: RIPER-5 planning-kit output, not read by the extractor at runtime. Dated plan docs under `process/general-plans/{active,backlog,completed}/` record design decisions and follow-up work; `completed/` entries are historical (their shipped architecture, if any, is folded into `spec.md`).

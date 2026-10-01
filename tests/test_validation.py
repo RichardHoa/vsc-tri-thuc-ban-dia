@@ -160,7 +160,7 @@ def _toc(tmp_path, start, end):
 def test_validate_section_flags_bare_dash_story_as_review(tmp_path, data_pdf):
     _toc(tmp_path, 307, 308)
     _write(tmp_path, "story_001.md", "# C\n\n## 1. T\n\nNgốc hỏi:\n\n-\n\n\"Mua hả?\".\n")
-    results, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
+    results, _, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
     assert "BARE_DASH_PARAGRAPH" in results[0].structural_flags
     assert results[0].status == "REVIEW"
 
@@ -174,7 +174,7 @@ def test_validate_section_flags_lost_continuation(tmp_path, data_pdf):
         "[^1]: (Trang 176) Truyện bà mẹ Mục Liên đại khái như sau:\n"
     )
     _write(tmp_path, "story_001.md", md)
-    results, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
+    results, _, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
     assert "FOOTNOTE_GAP:2" in results[0].structural_flags
 
 
@@ -189,15 +189,15 @@ from extractor.validation import (  # noqa: E402
 
 
 def test_story_52_orphan_marker_3_is_a_known_erratum():
-    assert (52, "ORPHAN_MARKER:3") in KNOWN_SOURCE_ERRATA
+    assert (52, "ORPHAN_MARKER:3@357") in KNOWN_SOURCE_ERRATA
 
 
 def test_apply_source_errata_moves_only_listed_flags():
-    remaining, errata = apply_source_errata(52, ["ORPHAN_MARKER:3", "LOW_DENSITY"])
+    remaining, errata = apply_source_errata(52, ["ORPHAN_MARKER:3@357", "LOW_DENSITY"])
     assert remaining == ["LOW_DENSITY"]
-    assert len(errata) == 1 and errata[0].startswith("ORPHAN_MARKER:3")
+    assert len(errata) == 1 and errata[0].startswith("ORPHAN_MARKER:3@357")
     # same flag on another story is still a real failure
-    assert apply_source_errata(51, ["ORPHAN_MARKER:3"]) == (["ORPHAN_MARKER:3"], [])
+    assert apply_source_errata(51, ["ORPHAN_MARKER:3@357"]) == (["ORPHAN_MARKER:3@357"], [])
 
 
 def _result(**kw):
@@ -230,9 +230,9 @@ def test_validate_section_story_52_is_erratum(tmp_path, data_pdf):
     }]}]}
     _write(tmp_path, "table_of_contents.json", json.dumps(toc))
     _write(tmp_path, "story_052.md", "# C\n\n## 52. T\n\nx[^3].\n")
-    results, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
-    assert "ORPHAN_MARKER:3" not in results[0].structural_flags
-    assert results[0].source_errata and results[0].source_errata[0].startswith("ORPHAN_MARKER:3")
+    results, _, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
+    assert not [f for f in results[0].structural_flags if f.startswith("ORPHAN_MARKER")]
+    assert results[0].source_errata and results[0].source_errata[0].startswith("ORPHAN_MARKER:3@357")
 
 
 def test_validate_section_merged_continuation_is_clean(tmp_path, data_pdf):
@@ -243,7 +243,7 @@ def test_validate_section_merged_continuation_is_clean(tmp_path, data_pdf):
         "[^2]: (Trang 175-176) Xem thêm. Truyện bà mẹ Mục Liên đại khái như sau:\n"
     )
     _write(tmp_path, "story_001.md", md)
-    results, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
+    results, _, _ = ExtractionValidator.validate_section(data_pdf.name, str(tmp_path))
     assert not [f for f in results[0].structural_flags if f.startswith("FOOTNOTE_GAP")]
 
 
@@ -267,5 +267,5 @@ def test_parse_markdown_story_keeps_empty_footnote_entry(tmp_path):
 
 def test_story_108_orphan_marker_2_is_a_known_erratum():
     # page 657 prints both of its footnotes as "1." (body markers are 1 and 2)
-    remaining, errata = apply_source_errata(108, ["ORPHAN_MARKER:2"])
-    assert remaining == [] and errata[0].startswith("ORPHAN_MARKER:2")
+    remaining, errata = apply_source_errata(108, ["ORPHAN_MARKER:2@657"])
+    assert remaining == [] and errata[0].startswith("ORPHAN_MARKER:2@657")

@@ -19,9 +19,9 @@ class MarkdownRenderer:
         lines: List[str] = []
 
         if story.category:
-            lines.append(f"# {story.category}\n")
+            lines.append(f"# {story.category_heading or story.category}\n")
         if story.title:
-            lines.append(f"## {story.story_number}. {story.title}\n")
+            lines.append(f"## {story.story_number}. {story.heading_title or story.title}\n")
 
         for p in story.paragraphs:
             lines.append(f"{MarkdownRenderer.render_paragraph(p)}\n")

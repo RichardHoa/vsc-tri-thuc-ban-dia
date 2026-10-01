@@ -53,6 +53,11 @@ class StoryDefinition:
     Introductions start and end mid-page, so they carry ``body_top`` (body lines
     on ``start_page`` above it are skipped) and ``body_bottom`` (body lines on
     ``end_page`` at or below it are skipped).
+
+    ``title`` and ``category`` are clean (no footnote markers): they go into the
+    manifests. ``heading_title`` / ``category_heading`` are set only when the
+    printed heading carries a footnote marker, and hold it with ``[^N]`` at its
+    printed position, for rendering.
     """
     story_number: int
     title: str
@@ -62,6 +67,8 @@ class StoryDefinition:
     start_y0: float
     body_top: Optional[float] = None
     body_bottom: Optional[float] = None
+    heading_title: Optional[str] = None
+    category_heading: Optional[str] = None
 
 
 @dataclass
@@ -75,6 +82,9 @@ class StoryContent:
     paragraphs: List[Paragraph] = field(default_factory=list)
     khao_di: List[Paragraph] = field(default_factory=list)
     footnotes: List[Footnote] = field(default_factory=list)
+    #: Rendered headings with footnote markers (see ``StoryDefinition``).
+    heading_title: Optional[str] = None
+    category_heading: Optional[str] = None
 
 
 @dataclass

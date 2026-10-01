@@ -21,8 +21,11 @@ from .verse import VerseDetector
 from .survey import EdgeCaseSurvey, FootnoteChain
 from .validation import (
     KNOWN_SOURCE_ERRATA,
+    KNOWN_TOC_ERRATA,
     ExtractionValidator,
+    LeafJob,
     apply_source_errata,
+    check_completeness,
     StoryValidationResult,
     ValidationReporter,
     extract_raw_page_text,
@@ -58,7 +61,10 @@ __all__ = [
     "StoryValidationResult",
     "ExtractionValidator",
     "KNOWN_SOURCE_ERRATA",
+    "KNOWN_TOC_ERRATA",
+    "LeafJob",
     "apply_source_errata",
+    "check_completeness",
     "ValidationReporter",
     "normalize_for_diff",
     "strip_markdown_scaffolding",
