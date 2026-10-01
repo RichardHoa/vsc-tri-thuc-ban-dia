@@ -34,6 +34,7 @@ vsc-tri-thuc-ban-dia/
 │   ├── engine.py
 │   ├── formatters.py
 │   ├── pipeline.py
+│   ├── bibliography.py
 │   ├── cli.py
 │   ├── survey.py
 │   └── validation.py
@@ -43,7 +44,8 @@ vsc-tri-thuc-ban-dia/
 │   ├── PHAN_THU_NHAT/              # Part 1: Sections I–III, essay_NN.md
 │   ├── PHAN_THU_HAI/               # Part 2: introduction.md + Sections I–X
 │   │   └── I_NGUON_GOC_SU_VAT/     # story_NNN.md + table_of_contents.json (Section manifest)
-│   └── PHAN_THU_BA/                # Part 3: introduction.md + Sections IV–V, essay_NN.md
+│   ├── PHAN_THU_BA/                # Part 3: introduction.md + Sections IV–V, essay_NN.md
+│   └── THU_MUC_THAM_KHAO/          # Bibliography: introduction.md + I_/II_/III_<SLUG>.md
 ├── .scratch/                       # Per-effort working artifacts (plans, edge-case catalog) — not system docs
 ├── docs/
 │   ├── ai-context/                 # This bundle: spec.md, project-structure.md, progress.md, deployment-infrastructure.md

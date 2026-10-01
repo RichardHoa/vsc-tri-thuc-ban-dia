@@ -2,7 +2,7 @@
 
 ## Project Status
 
-The whole book is extracted to `extracted_stories/` as Part → Section → leaf: Part 1 (Sections I–III, 15 Essays), Part 2 (Introduction + Sections I–X, 201 Stories) and Part 3 (Introduction + Sections IV–V, 8 Essays), with per-Section and root manifests. One validation run over all three Parts covers 226 leaves, and rendered coverage is 1.000 on all of them. 5 Essays are flagged `REVIEW` for footnote defects (tickets 03–08 in `.scratch/book-parts-extraction/issues/`). Three Stories carry known textbook errata (status `ERRATUM`): 52, 97 and 108. Footnote markers printed in Story and Section headings render in place. pytest suite in `tests/` (174 tests).
+The whole book is extracted to `extracted_stories/` as Part → Section → leaf: Part 1 (Sections I–III, 15 Essays), Part 2 (Introduction + Sections I–X, 201 Stories) and Part 3 (Introduction + Sections IV–V, 8 Essays), with per-Section and root manifests, plus the Bibliography (Sections I–III, 616 entries). One validation run over all three Parts covers 226 leaves, and rendered coverage is 1.000 on all of them. 5 Essays are flagged `REVIEW` for footnote defects (tickets 03–08 in `.scratch/book-parts-extraction/issues/`). Three Stories carry known textbook errata (status `ERRATUM`): 52, 97 and 108. Footnote markers printed in Story and Section headings render in place. pytest suite in `tests/` (174 tests).
 
 ## Completed
 

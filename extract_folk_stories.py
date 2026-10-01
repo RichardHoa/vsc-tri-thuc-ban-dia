@@ -4,7 +4,8 @@ Folk Story & Footnote Extractor for Vietnamese Folk Tales (data.pdf)
 --------------------------------------------------------------------
 CLI entrypoint to discover, extract, and format the book's three Parts —
 Stories (with Khảo dị), Essays, Introductions, Roman Sections and footnotes —
-into Markdown plus per-Section and root Table of Contents JSON.
+and the Bibliography (THƯ MỤC THAM KHẢO) into Markdown plus per-Section and
+root Table of Contents JSON.
 """
 
 from __future__ import annotations
@@ -30,6 +31,9 @@ def build_cli_parser() -> argparse.ArgumentParser:
     add_selection_args(parser)
     parser.add_argument("--story", type=int, default=None,
                         help="Extract one Part 2 Story by number only (implies --part 2)")
+    parser.add_argument("--bibliography", action="store_true",
+                        help="Extract only the Bibliography (THƯ MỤC THAM KHẢO); a full run "
+                             "includes it after the three Parts")
     parser.add_argument("--list-sections", action="store_true",
                         help="Print each Part's Sections found in MỤC LỤC and exit")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose debug logging")
@@ -41,6 +45,8 @@ def main():
     parser = build_cli_parser()
     args = parser.parse_args()
     check_selection_args(parser, args)
+    if args.bibliography and (args.part is not None or args.section is not None or args.story is not None):
+        parser.error("--bibliography cannot be combined with --part, --section or --story.")
 
     try:
         if args.list_sections:
@@ -59,6 +65,7 @@ def main():
             section_spec=args.section,
             story_number=args.story,
             verbose=args.verbose,
+            bibliography=args.bibliography,
         ).run()
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)

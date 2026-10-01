@@ -14,7 +14,8 @@ from .models import ExtractorConfig, StoryDefinition
 from .discovery import PartLayoutDiscovery, StoryDiscoveryEngine
 from .engine import StoryExtractionEngine
 from .formatters import MarkdownRenderer, TableOfContentsBuilder
-from .toc import PartRange, SectionRange, TableOfContentsParser
+from .bibliography import BibliographyParser, BibliographyWriter
+from .toc import PartRange, SectionRange, TableOfContentsParser, ascii_slug
 
 
 def _write_json(path: str, data: Dict[str, Any]) -> None:
@@ -123,6 +124,12 @@ class BookPipeline:
         <output_dir>/<PART>/introduction.md            Parts 2 and 3
         <output_dir>/<PART>/<ROMAN>_<SLUG>/            story_NNN.md or essay_NN.md
                                                        + table_of_contents.json
+        <output_dir>/THU_MUC_THAM_KHAO/                Bibliography: introduction.md,
+                                                       <ROMAN>_<SLUG>.md per Section
+                                                       + table_of_contents.json
+
+    A full run (no selection) extracts the three Parts, then the Bibliography;
+    ``bibliography=True`` extracts the Bibliography alone.
 
     Stories go through ``FolkStoryPipeline`` per Section; Essays and
     Introductions are bounded by ``PartLayoutDiscovery``.
@@ -139,6 +146,7 @@ class BookPipeline:
         section_spec: Optional[str] = None,
         story_number: Optional[int] = None,
         verbose: bool = False,
+        bibliography: bool = False,
     ):
         self.pdf_path = pdf_path
         self.output_dir = output_dir
@@ -146,6 +154,7 @@ class BookPipeline:
         self.section_spec = section_spec
         self.story_number = story_number
         self.verbose = verbose
+        self.bibliography = bibliography
 
     def _config(self, **overrides) -> ExtractorConfig:
         return ExtractorConfig(pdf_path=self.pdf_path, verbose=self.verbose, **overrides)
@@ -153,6 +162,9 @@ class BookPipeline:
     def run(self) -> Dict[str, Any]:
         """Extracts the selection and rewrites the root manifest."""
         part = self.part
+        selected = part is not None or self.section_spec is not None or self.story_number is not None
+        if self.bibliography and selected:
+            raise ValueError("--bibliography cannot be combined with --part, --section or --story.")
         if self.story_number is not None:
             if part not in (None, 2):
                 raise ValueError("--story selects a Part 2 Story; it cannot be combined with --part "
@@ -163,9 +175,13 @@ class BookPipeline:
 
         with fitz.open(self.pdf_path) as doc:
             parts = TableOfContentsParser.parse_parts(doc)
-            selection = TableOfContentsParser.select_parts(parts, part, self.section_spec)
-            for part_range, sections in selection:
-                self._run_part(doc, part_range, sections)
+            if not self.bibliography:
+                selection = TableOfContentsParser.select_parts(parts, part, self.section_spec)
+                for part_range, sections in selection:
+                    self._run_part(doc, part_range, sections)
+            if not selected:
+                bib = BibliographyWriter.write(doc, self.output_dir)
+                _write_json(os.path.join(self.output_dir, bib['folder'], BibliographyWriter.MANIFEST_FILE), bib)
 
         root = self.build_root_manifest(parts, self.output_dir)
         os.makedirs(self.output_dir, exist_ok=True)
@@ -231,7 +247,7 @@ class BookPipeline:
 
     @classmethod
     def build_root_manifest(cls, parts: List[PartRange], output_dir: str) -> Dict[str, Any]:
-        """The full Part → Section → leaf tree.
+        """The full Part → Section → leaf tree, then the Bibliography.
 
         Leaves are read back from each Section's manifest on disk, so a partial
         run still yields the whole tree; a Section not extracted yet has none.
@@ -264,4 +280,10 @@ class BookPipeline:
                 'introduction': intro if os.path.exists(os.path.join(output_dir, intro)) else None,
                 'sections': sections,
             })
-        return {'book_title': TableOfContentsBuilder.BOOK_TITLE, 'parts': out_parts}
+        bibliography = None
+        bib_manifest = os.path.join(output_dir, ascii_slug(BibliographyParser.HEADING), cls.MANIFEST_FILE)
+        if os.path.exists(bib_manifest):
+            with open(bib_manifest, encoding='utf-8') as f:
+                bibliography = json.load(f)
+        return {'book_title': TableOfContentsBuilder.BOOK_TITLE, 'parts': out_parts,
+                'bibliography': bibliography}
