@@ -45,13 +45,23 @@ class Footnote:
 
 @dataclass
 class StoryDefinition:
-    """Metadata defining a story boundary discovered in the PDF."""
+    """Metadata defining a leaf boundary discovered in the PDF.
+
+    Used for every leaf kind: a Story, an Essay (``category`` = its Section) or
+    an Introduction (``story_number`` 0, no ``title``, ``category`` = its Part).
+    Stories start at the top of a page and own whole pages; Essays and
+    Introductions start and end mid-page, so they carry ``body_top`` (body lines
+    on ``start_page`` above it are skipped) and ``body_bottom`` (body lines on
+    ``end_page`` at or below it are skipped).
+    """
     story_number: int
     title: str
     category: str
     start_page: int
     end_page: int
     start_y0: float
+    body_top: Optional[float] = None
+    body_bottom: Optional[float] = None
 
 
 @dataclass

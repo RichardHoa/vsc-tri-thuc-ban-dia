@@ -21,6 +21,7 @@ class StoryExtractionEngine:
     """Extracts body text, dialogues, verse, KHẢO DỊ section, and footnotes for a story."""
 
     _SUPERSCRIPT_RUN = re.compile(r'^(\s*)(\d+)([.,;:!?)"”’]*\s*)$')
+    _MARKER = re.compile(r'\[\^(\d+)\]')
 
     @classmethod
     def superscript_marker(cls, text: str) -> Optional[str]:
@@ -154,6 +155,19 @@ class StoryExtractionEngine:
                 else:
                     current_para_lines = [text]
 
+        # A leaf bounded mid-page shares its first/last page with a neighbour.
+        # Footnote markers seen there, inside and outside this leaf's bounds,
+        # decide which of that page's footnotes belong here.
+        markers_in: set = set()
+        markers_out: set = set()
+
+        def outside_bounds(page_num: int, line_y0: float) -> bool:
+            if (story_def.body_top is not None and page_num == story_def.start_page
+                    and line_y0 < story_def.body_top):
+                return True
+            return (story_def.body_bottom is not None and page_num == story_def.end_page
+                    and line_y0 >= story_def.body_bottom)
+
         for pno in range(story_def.start_page - 1, story_def.end_page):
             page = doc[pno]
             h_sep_y = PdfGeometryHelper.find_footer_separator_y(page)
@@ -202,6 +216,11 @@ class StoryExtractionEngine:
                     )
                     if not clean_line:
                         continue
+                    outside = outside_bounds(pno + 1, line_y0)
+                    for num in StoryExtractionEngine._MARKER.findall(clean_line):
+                        (markers_out if outside else markers_in).add((pno + 1, int(num)))
+                    if outside:
+                        continue
                     is_verse = bool(l.get('is_verse'))
                     if runs and runs[-1][0] == is_verse:
                         runs[-1][1].append(clean_line)
@@ -218,6 +237,15 @@ class StoryExtractionEngine:
 
         flush_current_paragraph()
         flush_pending_dialogue()
+
+        if markers_out:
+            # A footnote whose marker is only in the neighbour's part of a shared
+            # page is the neighbour's. One matched by no marker at all is kept.
+            all_footnotes = [
+                fn for fn in all_footnotes
+                if (fn.page, fn.orig_num) not in markers_out
+                or (fn.page, fn.orig_num) in markers_in
+            ]
 
         return StoryContent(
             category=story_def.category,

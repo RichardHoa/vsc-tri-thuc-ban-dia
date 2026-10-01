@@ -19,6 +19,7 @@ import sys
 import fitz  # PyMuPDF
 
 from extractor import EdgeCaseSurvey, ExtractorConfig, TableOfContentsParser
+from extractor.cli import add_selection_args, check_selection_args
 
 DEFAULT_CATALOG = os.path.join(".scratch", "folk-story-pipeline-fixes", "edge-case-catalog.md")
 
@@ -29,20 +30,19 @@ def build_cli_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--pdf", default="data.pdf", help="Path to data.pdf")
-    parser.add_argument(
-        "--section", default="1-10",
-        help="1-based MỤC LỤC section index/range/list to survey, e.g. 1, 4-10 or 1,4",
-    )
+    add_selection_args(parser)
     parser.add_argument(
         "--pages", default=None,
-        help="Survey an explicit 1-based page range A-B instead of --section",
+        help="Survey an explicit 1-based page range A-B instead of --part/--section",
     )
     parser.add_argument("--catalog", default=DEFAULT_CATALOG, help="Markdown catalog output path")
     return parser
 
 
 def main() -> None:
-    args = build_cli_parser().parse_args()
+    parser = build_cli_parser()
+    args = parser.parse_args()
+    check_selection_args(parser, args)
     config = ExtractorConfig(pdf_path=args.pdf)
     try:
         with fitz.open(args.pdf) as doc:
@@ -52,15 +52,17 @@ def main() -> None:
                 print(f"== Surveying pages {lo}-{hi}")
                 surveys.append(EdgeCaseSurvey.survey_range(doc, lo, hi, config, label=f"Pages {lo}-{hi}"))
             else:
-                sections = TableOfContentsParser.parse_sections(doc)
-                for section in TableOfContentsParser.select_sections(sections, args.section):
-                    print(f"== Surveying section {section.index}: {section.full_title} "
-                          f"(pages {section.start_page}-{section.end_page})")
-                    surveys.append(EdgeCaseSurvey.survey_range(
-                        doc, section.start_page, section.end_page, config,
-                        label=f"{section.index}. {section.full_title}",
-                        hard_stops=section.hard_stops,
-                    ))
+                parts = TableOfContentsParser.parse_parts(doc)
+                for part, sections in TableOfContentsParser.select_parts(parts, args.part, args.section):
+                    for section in sections:
+                        label = f"Part {part.number} · {section.index}. {section.full_title}"
+                        print(f"== Surveying {label} (pages {section.start_page}-{section.end_page})")
+                        surveys.append(EdgeCaseSurvey.survey_range(
+                            doc, section.start_page, section.end_page, config,
+                            label=label,
+                            hard_stops=section.hard_stops,
+                            with_stories=part.leaf_kind == "stories",
+                        ))
 
         os.makedirs(os.path.dirname(os.path.abspath(args.catalog)), exist_ok=True)
         with open(args.catalog, "w", encoding="utf-8") as handle:

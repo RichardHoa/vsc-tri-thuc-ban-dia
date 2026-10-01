@@ -5,11 +5,14 @@ Story & Roman Category Discovery Engine.
 from __future__ import annotations
 
 import re
-from typing import List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
 import fitz  # PyMuPDF
 
-from .models import StoryDefinition
+from .models import ExtractorConfig, StoryDefinition
 from .normalizer import TextNormalizer
+from .geometry import PdfGeometryHelper
+from .toc import PartRange, TableOfContentsParser
 
 
 class StoryDiscoveryEngine:
@@ -144,3 +147,182 @@ class StoryDiscoveryEngine:
                 s.end_page = min(len(doc), s.start_page + 4)
 
         return selected_stories
+
+
+@dataclass
+class PartLayout:
+    """A Part's Introduction and Essays, as printed (Story discovery is separate)."""
+    introduction: Optional[StoryDefinition] = None
+    #: Essays per Section Roman numeral, in reading order.
+    essays: Dict[str, List[StoryDefinition]] = field(default_factory=dict)
+
+
+@dataclass
+class _Heading:
+    kind: str  # 'title' | 'section' | 'essay'
+    page: int
+    top: float
+    bottom: float
+    roman: str = ""
+    number: int = 0
+    title: str = ""
+
+
+class PartLayoutDiscovery:
+    """Finds a Part's Introduction and its Essays from the printed headings.
+
+    Essays start and end mid-page, so each leaf is bounded by heading
+    positions: it runs from below its own heading to the top of the next
+    heading (Essay, Section or end of Part). MỤC LỤC is only the guide — an
+    Essay heading printed in the text but missing from MỤC LỤC (Part 3 V.1) is
+    still found.
+    """
+
+    ESSAY_HEADING_PAT = re.compile(r'^\[?(\d+)\]?\s*\.\s*(.+)$')
+    #: Share of upper-case letters for a line to count as an all-caps heading.
+    #: Tolerates a stray lower-case letter printed inside a heading (p. 1356).
+    CAPS_RATIO = 0.9
+
+    @classmethod
+    def is_mostly_caps(cls, text: str) -> bool:
+        letters = [c for c in text if c.isalpha()]
+        if len(letters) < 2:
+            return False
+        return sum(c.isupper() for c in letters) / len(letters) >= cls.CAPS_RATIO
+
+    @classmethod
+    def parse_essay_heading(cls, text: str) -> Optional[Tuple[int, str]]:
+        """``(number, title)`` for an all-caps ``N. TITLE`` line, else ``None``.
+
+        Mixed-case numbered lines are prose lists, not headings.
+        """
+        text = TextNormalizer.clean_spaces(text)
+        if TableOfContentsParser._parse_roman(text):
+            return None
+        match = cls.ESSAY_HEADING_PAT.match(text)
+        if not match:
+            return None
+        title = cls.clean_heading_text(match.group(2))
+        if not cls.is_mostly_caps(title):
+            return None
+        return int(match.group(1)), title
+
+    @staticmethod
+    def clean_heading_text(text: str) -> str:
+        """Strips footnote digits and the closing period from a heading's text."""
+        text = re.sub(r'\d+\s*$', '', text.strip())
+        text = re.sub(r'([A-ZÀ-Ỵ])\d+(\s+)', r'\1\2', text)
+        return TextNormalizer.clean_spaces(text).rstrip('. ')
+
+    @staticmethod
+    def _body_lines(page: fitz.Page, config: ExtractorConfig) -> List[Tuple[float, float, str]]:
+        """``(y0, y1, text)`` of a page's non-empty body lines, top to bottom."""
+        h_sep_y = PdfGeometryHelper.find_footer_separator_y(page)
+        out = []
+        for b in page.get_text('dict').get('blocks', []):
+            if b.get('type') != 0:
+                continue
+            for l in b.get('lines', []):
+                raw = ''.join(s['text'] for s in l.get('spans', []))
+                text = TextNormalizer.clean_spaces(TextNormalizer.normalize_encoding(raw))
+                y0, y1 = l['bbox'][1], l['bbox'][3]
+                if not text or PdfGeometryHelper.is_header_line(y0, config.min_header_y):
+                    continue
+                if PdfGeometryHelper.is_footer_line(
+                        y0, raw, h_sep_y, config.max_footer_y, config.footer_fallback_y):
+                    continue
+                out.append((y0, y1, text))
+        out.sort(key=lambda t: t[0])
+        return out
+
+    @classmethod
+    def _scan_headings(
+        cls, doc: fitz.Document, part: PartRange, config: ExtractorConfig
+    ) -> Tuple[List[_Heading], Dict[int, List[Tuple[float, float, str]]]]:
+        """Part title, Section and Essay headings in reading order, plus each page's body lines."""
+        romans = {s.roman for s in part.sections}
+        want_essays = part.leaf_kind == "essays"
+        headings: List[_Heading] = []
+        page_lines: Dict[int, List[Tuple[float, float, str]]] = {}
+
+        for page_num in range(part.start_page, part.end_page + 1):
+            lines = cls._body_lines(doc[page_num - 1], config)
+            page_lines[page_num] = lines
+            i = 0
+            if page_num == part.start_page:
+                # The Part heading and its title, e.g. "PHẦN THỨ BA" / "NHẬN ĐỊNH ... VIỆT-" / "NAM".
+                while i < len(lines) and (TableOfContentsParser.PART_PAT.match(lines[i][2])
+                                          or cls.is_mostly_caps(lines[i][2])):
+                    i += 1
+                if i:
+                    headings.append(_Heading('title', page_num, lines[0][0], lines[i - 1][1]))
+            while i < len(lines):
+                y0, y1, text = lines[i]
+                i += 1
+                roman_info = TableOfContentsParser._parse_roman(text)
+                if roman_info and roman_info[0] in romans:
+                    headings.append(_Heading('section', page_num, y0, y1, roman=roman_info[0]))
+                    if not want_essays:
+                        return headings, page_lines
+                    continue
+                essay = cls.parse_essay_heading(text) if want_essays else None
+                if essay is None:
+                    continue
+                parts = [essay[1]]
+                bottom = y1
+                # A long heading wraps over several lines (and blocks).
+                while (i < len(lines) and cls.is_mostly_caps(lines[i][2])
+                       and not cls.ESSAY_HEADING_PAT.match(lines[i][2])
+                       and not TableOfContentsParser._parse_roman(lines[i][2])):
+                    parts.append(cls.clean_heading_text(lines[i][2]))
+                    bottom = lines[i][1]
+                    i += 1
+                title = TextNormalizer.clean_spaces(' '.join(parts)).rstrip('. ')
+                headings.append(_Heading('essay', page_num, y0, bottom, number=essay[0], title=title))
+        return headings, page_lines
+
+    @classmethod
+    def discover(cls, doc: fitz.Document, part: PartRange, config: ExtractorConfig) -> PartLayout:
+        """Bounds of the Part's Introduction and (Parts 1, 3) its Essays."""
+        headings, page_lines = cls._scan_headings(doc, part, config)
+        layout = PartLayout()
+
+        def bounded(start: _Heading, nxt: Optional[_Heading], **fields) -> Optional[StoryDefinition]:
+            """The leaf below ``start`` up to ``nxt``; ``None`` when it holds no body text."""
+            if nxt is None:
+                end_page, body_bottom = part.end_page, None
+            elif any(y0 < nxt.top for y0, _, _ in page_lines.get(nxt.page, [])):
+                end_page, body_bottom = nxt.page, nxt.top
+            else:
+                end_page, body_bottom = nxt.page - 1, None
+            has_text = any(
+                not (p == start.page and y0 < start.bottom)
+                and not (p == end_page and body_bottom is not None and y0 >= body_bottom)
+                for p in range(start.page, end_page + 1)
+                for y0, _, _ in page_lines.get(p, [])
+            )
+            if not has_text:
+                return None
+            return StoryDefinition(
+                start_page=start.page, end_page=end_page, start_y0=start.top,
+                body_top=start.bottom, body_bottom=body_bottom, **fields,
+            )
+
+        sections = {s.roman: s for s in part.sections}
+        current_section: Optional[str] = None
+        for idx, heading in enumerate(headings):
+            nxt = headings[idx + 1] if idx + 1 < len(headings) else None
+            if heading.kind == 'title':
+                layout.introduction = bounded(
+                    heading, nxt, story_number=0, title="", category=part.full_title)
+            elif heading.kind == 'section':
+                current_section = heading.roman
+                layout.essays.setdefault(heading.roman, [])
+            elif current_section is not None:
+                essay = bounded(heading, nxt, story_number=heading.number, title=heading.title,
+                                category=sections[current_section].full_title)
+                if essay is not None:
+                    layout.essays[current_section].append(essay)
+        if part.leaf_kind != "essays":
+            layout.essays = {}
+        return layout

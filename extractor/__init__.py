@@ -12,11 +12,11 @@ from .models import (
 from .normalizer import TextNormalizer
 from .geometry import PdfGeometryHelper
 from .footnotes import FootnoteEngine
-from .discovery import StoryDiscoveryEngine
+from .discovery import PartLayout, PartLayoutDiscovery, StoryDiscoveryEngine
 from .engine import StoryExtractionEngine
 from .formatters import MarkdownRenderer, TableOfContentsBuilder
-from .toc import SectionRange, TableOfContentsParser, TocEntry
-from .pipeline import FolkStoryPipeline
+from .toc import PartRange, SectionRange, TableOfContentsParser, TocEntry
+from .pipeline import BookPipeline, FolkStoryPipeline
 from .verse import VerseDetector
 from .survey import EdgeCaseSurvey, FootnoteChain
 from .validation import (
@@ -44,13 +44,17 @@ __all__ = [
     "PdfGeometryHelper",
     "FootnoteEngine",
     "StoryDiscoveryEngine",
+    "PartLayout",
+    "PartLayoutDiscovery",
     "StoryExtractionEngine",
     "MarkdownRenderer",
     "TableOfContentsBuilder",
     "TocEntry",
     "SectionRange",
+    "PartRange",
     "TableOfContentsParser",
     "FolkStoryPipeline",
+    "BookPipeline",
     "StoryValidationResult",
     "ExtractionValidator",
     "KNOWN_SOURCE_ERRATA",

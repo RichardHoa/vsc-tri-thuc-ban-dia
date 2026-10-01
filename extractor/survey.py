@@ -280,8 +280,11 @@ class EdgeCaseSurvey:
         config: ExtractorConfig,
         label: str,
         hard_stops: Optional[List[int]] = None,
+        with_stories: bool = True,
     ) -> RangeSurvey:
-        stories = StoryDiscoveryEngine.discover_stories(doc, start_page, end_page)
+        """Surveys one page range. ``with_stories=False`` for an Essay Section:
+        findings are then not attributed to Stories."""
+        stories = StoryDiscoveryEngine.discover_stories(doc, start_page, end_page) if with_stories else []
         for s in stories:
             for stop in (hard_stops or []) + [end_page + 1]:
                 if s.start_page < stop <= s.end_page:

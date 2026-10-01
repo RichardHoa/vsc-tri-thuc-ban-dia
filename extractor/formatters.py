@@ -65,26 +65,33 @@ class MarkdownRenderer:
 class TableOfContentsBuilder:
     """Builds hierarchical Table of Contents JSON data structure."""
 
+    BOOK_TITLE = 'KHO TÀNG TRUYỆN CỔ TÍCH VIỆT-NAM'
+
     @staticmethod
     def build(
         sections_map: Dict[str, List[Dict[str, any]]],
-        total_stories: int,
-        range_str: str
+        total: int,
+        range_str: str,
+        leaf_key: str = "stories",
     ) -> Dict[str, any]:
-        """Constructs TOC dictionary mapping sections to extracted stories."""
+        """Section manifest: each section title mapped to its leaves.
+
+        ``leaf_key`` names the leaf kind — ``stories`` (Part 2) or ``essays``
+        (Parts 1 and 3) — giving ``total_<leaf_key>`` and ``sections[].<leaf_key>``.
+        """
         sections_list = []
-        for sec_title, stories in sections_map.items():
+        for sec_title, leaves in sections_map.items():
             sec_id_match = re.match(r'^([IVXLCDM]+)\.', sec_title)
             sec_id = sec_id_match.group(1) if sec_id_match else "OTHER"
             sections_list.append({
                 'section_id': sec_id,
                 'section_title': sec_title,
-                'stories': stories
+                leaf_key: leaves
             })
 
         return {
-            'book_title': 'KHO TÀNG TRUYỆN CỔ TÍCH VIỆT-NAM',
+            'book_title': TableOfContentsBuilder.BOOK_TITLE,
             'extracted_range': range_str,
-            'total_stories': total_stories,
+            f'total_{leaf_key}': total,
             'sections': sections_list
         }
