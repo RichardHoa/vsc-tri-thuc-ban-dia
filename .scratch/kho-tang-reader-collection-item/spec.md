@@ -1,6 +1,6 @@
 # Kho Tàng reader as the `truyen-co-tich-viet-nam` Collection Item — full Book
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 Repo: `digitizing-vietnam-website`. Glossary: that repo's `CONTEXT.md` (Collection, Collection Item, Item Viewer, Book, Part, Section, Story, Essay, Part Introduction, Entry, Khảo dị, Footnote).
 

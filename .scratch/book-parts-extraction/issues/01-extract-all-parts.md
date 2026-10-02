@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] A no-argument run writes `PHAN_THU_NHAT/`, `PHAN_THU_HAI/` and `PHAN_THU_BA/`, plus a root `table_of_contents.json` matching the spec's shape. The old flat Section folders are gone (left uncommitted for review).
 - [x] Part 1: Sections I/II/III yield 6/5/4 Essays whose titles and start pages match MỤC LỤC.
@@ -19,3 +19,4 @@
 ## Comments
 
 - 2026-10-01 (agent): Implemented, uncommitted for review. 141 tests pass. A no-argument run's 201 Stories and Part 2 Section manifests are byte-identical to the pre-change `--section 1-10` output (`diff -r`). The full validator pass was skipped at the developer's request. Note for 02: p. 1397's footnote is printed `142.` and has no matching marker, so it's kept in both V.1 and V.2 (an unmatched footnote on a shared page is kept, never dropped). V.2 also has an unmatched `[^4]` definition.
+- 2026-10-02 (developer, via agent): Resolved: finished.

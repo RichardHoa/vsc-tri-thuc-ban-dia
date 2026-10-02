@@ -4,10 +4,11 @@
 
 **Blocked by:** None
 
-**Status:** needs-triage
+**Status:** resolved
 
 - [ ] The footnote appears in exactly one Essay, and that Essay's report status is `ERRATUM` with the printed-number reason.
 - [ ] The other Essay has no `[^142]` entry.
 
 ## Comments
 - 2026-10-01 (developer, via agent): Decision: footnote 142 is abandoned. It belongs to no Essay and is removed from both V.1 and V.2. The developer is editing the output by hand for now.
+- 2026-10-02 (developer, via agent): Resolved manually by the developer (output edited by hand).

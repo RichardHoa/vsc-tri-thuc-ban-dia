@@ -4,10 +4,11 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] `PHAN_THU_BA/V_THU_TIM_NGUON_GOC_TRUYEN_CO_TICH_VIET_NAM/essay_02.md` has `[^1]`, `[^2]` and `[^3]` entries for p. 1406, and p. 1405's `[^1]` ends where its own text ends.
 - [ ] The validator no longer flags Essay V.2 `ORPHAN_MARKER:1@1406` / `2@1406` / `3@1406`.
 - [ ] A test pins p. 1406. Every other leaf's Markdown is unchanged (diff against the pre-change output).
 
 ## Comments
+- 2026-10-02 (developer, via agent): Resolved manually by the developer (output edited by hand).

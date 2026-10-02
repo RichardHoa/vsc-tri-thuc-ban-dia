@@ -12,7 +12,7 @@ Full detail: `../spec.md`. Glossary: `CONTEXT.md` in the website repo.
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] **Old collection removed:**
   - [ ] The stand-alone Kho Tàng collection's route, data, components and Strapi stand-in are deleted.
@@ -56,3 +56,6 @@ Full detail: `../spec.md`. Glossary: `CONTEXT.md` in the website repo.
 - [ ] **Narrow viewport:** the contents panel stacks above the text with no horizontal scroll.
 - [ ] **Static checks:** type-check and lint pass for the touched files.
 - [ ] **Hand-off:** nothing is committed, so the developer can review and commit.
+
+## Comments
+- 2026-10-02 (developer, via agent): Resolved: finished.

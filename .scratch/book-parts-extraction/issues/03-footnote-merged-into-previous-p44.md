@@ -4,10 +4,11 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] `PHAN_THU_NHAT/I_BAN_CHAT_TRUYEN_CO_TICH/essay_01.md` has `[^2]: (Trang 44) Hợp tác xã Văn hóa mới xuất bản, Thanh-hóa, 1951; tr.92.`, and `[^1]` on p. 44 no longer contains that text.
 - [ ] The validator no longer flags Essay I.1 `ORPHAN_MARKER:2@44`.
 - [ ] A test pins p. 44's two footnotes. Every other leaf's Markdown is unchanged (diff against the pre-change output).
 
 ## Comments
+- 2026-10-02 (developer, via agent): Resolved manually by the developer (output edited by hand).

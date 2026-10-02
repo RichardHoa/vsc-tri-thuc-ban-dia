@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] Stories 13, 21, 25, 47, 55 and 57 render the heading marker at its printed position (e.g. `## 57. KIỆN NGÀNH[^1] ĐA`), and their manifest titles have no marker. Any Essay, Section or Part heading carrying a footnote does the same.
 - [x] The page-aware orphan check flags all 6 Stories on output from before the fix and none after, with no new orphan flags elsewhere in Part 2.
@@ -21,3 +21,4 @@
   - **Page-aware check on pre-fix output:** flags exactly the 9 heading Stories (`ORPHAN_FOOTNOTE:1@<start page>`) and nothing else in Part 2. Errata keys now carry the page (`ORPHAN_MARKER:3@357`, `ORPHAN_MARKER:2@657`).
   - **Full no-argument run:** 226 leaves (201 Stories, 23 Essays, 2 Introductions), 11m46s on 8 workers (`--workers`, default CPU count). Rendered coverage is 1.000 on all of them. The 3 Story errata stay `ERRATUM`, and Part 3 V's drift is a MỤC LỤC erratum.
   - **Report:** 5 Essays flagged, all genuine. Follow-ups filed as 03–08.
+- 2026-10-02 (developer, via agent): Resolved: finished.

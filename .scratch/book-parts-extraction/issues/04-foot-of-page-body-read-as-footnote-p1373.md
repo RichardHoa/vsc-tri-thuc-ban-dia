@@ -4,10 +4,11 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] `PHAN_THU_BA/IV_DAC_DIEM_CUA_TRUYEN_CO_TICH_VIET_NAM/essay_03.md` has the `2. Trước hết…` paragraph in the body, in reading order, and no `[^2]` definition for p. 1373.
 - [ ] The validator no longer flags Essay IV.3 `ORPHAN_FOOTNOTE:2@1373`, and its rendered coverage stays 1.000.
 - [ ] A test covers a body-size numbered paragraph at the foot of a page with no separator. No Story's Markdown changes (diff against the pre-change output).
 
 ## Comments
+- 2026-10-02 (developer, via agent): Resolved manually by the developer (output edited by hand).

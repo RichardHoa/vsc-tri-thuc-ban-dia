@@ -4,10 +4,11 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] `PHAN_THU_BA/V_THU_TIM_NGUON_GOC_TRUYEN_CO_TICH_VIET_NAM/essay_02.md` has a single `[^1]: (Trang 1399)` entry holding the whole list.
 - [ ] The validator no longer flags Essay V.2 `ORPHAN_FOOTNOTE:2@1399` / `ORPHAN_FOOTNOTE:3@1399`.
 - [ ] A test pins p. 1399. Every other leaf's Markdown is unchanged (diff against the pre-change output).
 
 ## Comments
+- 2026-10-02 (developer, via agent): Resolved manually by the developer (output edited by hand).

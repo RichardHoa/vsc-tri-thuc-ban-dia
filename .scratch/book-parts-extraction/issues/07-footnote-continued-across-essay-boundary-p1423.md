@@ -4,7 +4,7 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Essay V.3's footnote reads through to the end of its p. 1424 continuation, as one `(Trang 1423-1424)` entry.
 - [ ] Essay V.4 has no unmarked `[^1]: (Trang 1424)` entry, and the validator no longer flags it `ORPHAN_FOOTNOTE:1@1424`.
@@ -12,3 +12,4 @@
 
 ## Comments
 - 2026-10-01 (agent): Wider than described. The footnote is V.3's `[^2]`, which starts on p. 1422 and runs over all of p. 1423 (footnote-size text only, no separator) into the top of p. 1424's footer. All of p. 1423's text is rendered in V.3's **body** (`essay_03.md` lines 63–83, `Đông Á có kể ra…` through `…của truyền`). It isn't flagged, because coverage stays 1.000. The fix must append p. 1423 and the p. 1424 head to `[^2]` as `(Trang 1422-1424)`.
+- 2026-10-02 (developer, via agent): Resolved manually by the developer (output edited by hand).

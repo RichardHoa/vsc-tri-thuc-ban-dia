@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] New collection card renders on `/our-collections` with the book cover, correctly bucketed among uncategorized collections, across all existing view modes (grid/list/TOC).
 - [ ] Collection-detail and item-detail routes render with no new Strapi record, via in-code stand-ins clearly commented `TEMPORARY — remove once a real Strapi record exists`.
@@ -15,3 +15,4 @@
 - [ ] `npm run lint` passes on new/changed files; no remaining reference to the old repo-root `book.jpg` path.
 
 ## Comments
+- 2026-10-02 (developer, via agent): Resolved: finished.
